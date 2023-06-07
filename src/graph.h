@@ -19,8 +19,9 @@ struct ReshapeOp;
 
 struct Graph;
 struct GraphNode;
-using Shape = std::vector<size_t>;
-using Dims = std::vector<size_t>;
+using dim_t = ssize_t;
+using Shape = std::vector<dim_t>;
+using Dims = std::vector<dim_t>;
 
 enum class UnaryOpType
 {
@@ -109,18 +110,18 @@ struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, FusedOp, R
 {
     using variant::variant;
     GraphNode &sum(bool keepdim = false);
-    GraphNode &sum(size_t axis, bool keepdim = false);
+    GraphNode &sum(dim_t axis, bool keepdim = false);
     GraphNode &sum(Dims dims, bool keepdim = false);
     GraphNode &max(bool keepdim = false);
-    GraphNode &max(size_t axis, bool keepdim = false);
+    GraphNode &max(dim_t axis, bool keepdim = false);
     GraphNode &max(Dims dims, bool keepdim = false);
 
     GraphNode &reshape(Shape shape);
-    GraphNode &reshape(size_t length);
+    GraphNode &reshape(dim_t length);
+    Shape shape() const; // Empty shape means scalar
 
-    Shape shape() const; // Null shape means scalar
-    void verify() const;
-    void codegen(std::ostringstream &s);
+    void Verify() const;
+    void Codegen(std::ostringstream &s);
 };
 
 GraphNode &exp(GraphNode &x);
@@ -145,14 +146,14 @@ GraphNode &max(float x, GraphNode &y);
 GraphNode &max(GraphNode &x, float y);
 
 GraphNode &sum(GraphNode &x, bool keepdim = false);
-GraphNode &sum(GraphNode &x, size_t axis, bool keepdim = false);
+GraphNode &sum(GraphNode &x, dim_t axis, bool keepdim = false);
 GraphNode &sum(GraphNode &x, Dims dims, bool keepdim = false);
 GraphNode &max(GraphNode &x, bool keepdim = false);
-GraphNode &max(GraphNode &x, size_t axis, bool keepdim = false);
+GraphNode &max(GraphNode &x, dim_t axis, bool keepdim = false);
 GraphNode &max(GraphNode &x, Dims dims, bool keepdim = false);
 
 GraphNode &reshape(GraphNode &x, Shape shape);
-GraphNode &reshape(GraphNode &x, size_t length);
+GraphNode &reshape(GraphNode &x, dim_t length);
 
 struct Graph
 {

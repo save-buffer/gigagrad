@@ -1,6 +1,10 @@
 #include "graph.h"
 
+#include <algorithm>
+#include <functional>
+#include <numeric>
 #include <stdexcept>
+
 
 namespace Gigagrad
 {
@@ -27,7 +31,7 @@ GraphNode &GraphNode::sum(bool keepdim)
     return this->sum(Dims{}, keepdim);
 }
 
-GraphNode &GraphNode::sum(size_t dim, bool keepdim)
+GraphNode &GraphNode::sum(dim_t dim, bool keepdim)
 {
     return this->sum(Dims{dim}, keepdim);
 }
@@ -42,7 +46,7 @@ GraphNode &GraphNode::max(bool keepdim)
     return this->max(Dims{}, keepdim);
 }
 
-GraphNode &GraphNode::max(size_t dim, bool keepdim)
+GraphNode &GraphNode::max(dim_t dim, bool keepdim)
 {
     return this->max(Dims{dim}, keepdim);
 }
@@ -58,7 +62,7 @@ GraphNode &GraphNode::reshape(Shape shape)
     return graph.AddNode(ReshapeOp{graph, *this, std::move(shape)});
 }
 
-GraphNode &GraphNode::reshape(size_t length)
+GraphNode &GraphNode::reshape(dim_t length)
 {
     return this->reshape(Shape{length});
 }
@@ -185,7 +189,7 @@ GraphNode &sum(GraphNode &x, bool keepdim)
     return x.sum(keepdim);
 }
 
-GraphNode &sum(GraphNode &x, size_t axis, bool keepdim)
+GraphNode &sum(GraphNode &x, dim_t axis, bool keepdim)
 {
     return x.sum(axis, keepdim);
 }
@@ -200,7 +204,7 @@ GraphNode &max(GraphNode &x, bool keepdim)
     return x.max(keepdim);
 }
 
-GraphNode &max(GraphNode &x, size_t axis, bool keepdim)
+GraphNode &max(GraphNode &x, dim_t axis, bool keepdim)
 {
     return x.max(axis, keepdim);
 }
@@ -215,7 +219,7 @@ GraphNode &reshape(GraphNode &x, Shape shape)
     return x.reshape(std::move(shape));
 }
 
-GraphNode &reshape(GraphNode &x, size_t length)
+GraphNode &reshape(GraphNode &x, dim_t length)
 {
     return x.reshape(length);
 }
@@ -232,69 +236,16 @@ GraphNode &Graph::AddNode(GraphNode node)
     return this->nodes.back();
 }
 
-Shape ComputeShape(const Tensor &t)
-{
-    return t.shape;
-}
-
-Shape ComputeShape(const Immediate &i)
-{
-    return {};
-}
-
-Shape ComputeShape(const UnaryOp &u)
-{
-    return u.x.shape();
-}
-
-Shape ComputeShape(const BinaryOp &b)
-{
-    Shape xshape = b.x.shape();
-    if(!xshape.empty())
-        return xshape;
-    return b.y.shape();
-}
-
-Shape ComputeShape(const FusedOp &f)
-{
-    Shape xshape = f.x.shape();
-    if(!xshape.empty())
-        return xshape;
-    Shape yshape = f.y.shape();
-    if(!yshape.empty())
-        return yshape;
-    return f.z.shape();
-}
-
-Shape ComputeShape(const ReduceOp &r)
-{
-    if(r.dims.size() == 0)
-        return {};
-    
-    Shape shape = r.x.shape();
-    return shape;
-}
-
-Shape ComputeShape(const ReshapeOp &r)
-{
-    return r.shape;
-}
-
-Shape GraphNode::shape() const
-{
-    return std::visit([](auto &&arg) { return ComputeShape(arg); }, *this);
-}
-
 Shape VerifyWithShape(const GraphNode &node);
 
 Shape VerifyWithShape(const Tensor &t)
 {
-    return ComputeShape(t);
+    return t.shape;
 }
 
 Shape VerifyWithShape(const Immediate &i)
 {
-    return ComputeShape(i);
+    return {};
 }
 
 Shape VerifyWithShape(const UnaryOp &u)
@@ -315,19 +266,105 @@ Shape VerifyWithShape(const BinaryOp &u)
     return shapex;
 }
 
+Shape VerifyWithShape(const FusedOp &f)
+{
+    Shape shapes[3] =
+    {
+        VerifyWithShape(f.x),
+        VerifyWithShape(f.y),
+        VerifyWithShape(f.z),
+    };
+    int num_nonempty = 0;
+    Shape *nonempty[3];
+    for(int i = 0; i < 3; i++)
+        if(!shapes[i].empty())
+            nonempty[num_nonempty++] = &shapes[i];
+
+    if(num_nonempty == 0)
+        return {};
+
+    for(int i = 0; i < num_nonempty - 1; i++)
+        if(*(nonempty[i]) != *(nonempty[i + 1]))
+            throw std::domain_error("Mismatched shapes in FusedOp");
+    return *(nonempty[0]);
+}
+
+Shape VerifyWithShape(const ReduceOp &r)
+{
+    Shape shape = VerifyWithShape(r.x);
+    if(r.dims.empty())
+    {
+        if(r.keepdim)
+            return Shape(shape.size(), 1); // Shape of all 1's
+        return {};
+    }
+
+    if(r.dims.size() > shape.size())
+        throw std::domain_error("Specified more dims to reduce on than there are dimensions in tensor");
+    
+    for(auto dim : r.dims)
+    {
+        if(dim < 0 || dim >= r.dims.size())
+            throw std::domain_error("Specified dimension is out of range on reduction operation");
+        shape[dim] = 1;
+    }
+    if(r.keepdim)
+        std::remove_if(shape.begin(), shape.end(), [](auto n) { return n == 1; });
+    return shape;
+}
+
+Shape VerifyWithShape(const ReshapeOp &r)
+{
+    Shape input_shape = VerifyWithShape(r.x);
+    Shape new_shape = r.shape;
+    auto num_elements = std::accumulate(input_shape.begin(), input_shape.end(), dim_t{1}, std::multiplies{});
+    auto num_implicit_dims = std::count(new_shape.begin(), new_shape.end(), -1);
+    if(num_implicit_dims == 0)
+    {
+        auto new_num_elements = std::accumulate(new_shape.begin(), new_shape.end(), dim_t{1}, std::multiplies{});
+        if(new_num_elements != num_elements)
+            throw std::domain_error("Reshape number of elements doesn't match that of input tensor");
+        return new_shape;
+    }
+
+    if(num_implicit_dims > 1)
+        throw std::domain_error("Reshape can have at most one implicit dimension");
+
+    auto num_elems_not_including_implicit_dim = std::accumulate(
+        new_shape.begin(),
+        new_shape.end(),
+        dim_t{1},
+        [](auto x, auto y)
+        {
+            if(y == -1)
+                return x;
+            return x * y;
+        });
+    auto remaining_dim = num_elements / num_elems_not_including_implicit_dim;
+    for(auto &x : new_shape)
+        if(x == -1)
+            x = remaining_dim;
+    return new_shape;
+}
+
 Shape VerifyWithShape(const GraphNode &node)
 {
     return std::visit([](auto &&arg) { return VerifyWithShape(arg); }, node);
 }
 
-void GraphNode::verify() const
+Shape GraphNode::shape() const
+{
+    return std::visit([](auto &&arg) { return VerifyWithShape(arg); }, *this);
+}
+
+void GraphNode::Verify() const
 {
     std::visit([](auto &&arg) { VerifyWithShape(arg); }, *this);
 }
 
-void GraphNode::codegen(std::ostringstream &s)
+void GraphNode::Codegen(std::ostringstream &s)
 {
-    this->verify();
+    this->Verify();
 }
 
 }
