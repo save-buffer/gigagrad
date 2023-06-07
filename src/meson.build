@@ -1,0 +1,1 @@
+lib = library('gigagrad', 'src/graph.cpp')
