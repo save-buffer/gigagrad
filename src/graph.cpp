@@ -67,6 +67,27 @@ GraphNode &GraphNode::reshape(dim_t length)
     return this->reshape(Shape{length});
 }
 
+GraphNode &GraphNode::permute(Dims dims)
+{
+    Graph &graph = GetGraph(*this);
+    return graph.AddNode(PermuteOp{graph, *this, std::move(dims)});
+}
+
+GraphNode &GraphNode::transpose()
+{
+    Shape shape = this->shape();
+    Dims dims(shape.size());
+    std::iota(std::rbegin(dims), std::rend(dims), 0);
+    return this->permute(std::move(dims));
+}
+
+// axb * bxc -> axc
+// ABx1 * 
+GraphNode &GraphNode::matmul(GraphNode &x)
+{
+    
+}
+
 GraphNode &exp(GraphNode &x)
 {
     return WrapInUnary(x, UnaryOpType::EXP);
@@ -80,6 +101,11 @@ GraphNode &log(GraphNode &x)
 GraphNode &sin(GraphNode &x)
 {
     return WrapInUnary(x, UnaryOpType::SIN);
+}
+
+GraphNode &operator-(GraphNode &x)
+{
+    return 0 - x;
 }
 
 GraphNode &operator+(GraphNode &x, GraphNode &y)
@@ -134,11 +160,24 @@ GraphNode &operator*(GraphNode &x, float y)
     return y * x;
 }
 
+GraphNode &operator/(GraphNode &x, GraphNode &y)
+{
+    Graph &graph = GetGraph(x);
+    return graph.AddNode(BinaryOp{graph, BinaryOpType::DIV, x, y});
+}
+
+GraphNode &operator/(float x, GraphNode &y)
+{
+    Graph &graph = GetGraph(y);
+    GraphNode &xnode = graph.AddNode(Immediate{graph, x});
+    return xnode / y;
+}
+
 GraphNode &operator/(GraphNode &x, float y)
 {
     Graph &graph = GetGraph(x);
     GraphNode &ynode = graph.AddNode(Immediate{graph, y});
-    return graph.AddNode(BinaryOp{graph, BinaryOpType::DIV, x, ynode});
+    return x / ynode;
 }
 
 GraphNode &operator^(GraphNode &x, float y)
@@ -177,6 +216,11 @@ GraphNode &max(float x, GraphNode &y)
     Graph &graph = GetGraph(y);
     GraphNode &xnode = graph.AddNode(Immediate{graph, x});
     return max(xnode, y);
+}
+
+GraphNode &operator%(GraphNode &x, GraphNode &y)
+{
+    return x.matmul(y);
 }
 
 GraphNode &max(GraphNode &x, float y)
@@ -224,16 +268,59 @@ GraphNode &reshape(GraphNode &x, dim_t length)
     return x.reshape(length);
 }
 
+GraphNode &permute(GraphNode &x, Dims permutation)
+{
+    return x.permute(std::move(permutation));
+}
+
+GraphNode &transpose(GraphNode &x)
+{
+    return x.transpose();
+}
+
+GraphNode &matmul(GraphNode &x, GraphNode &y)
+{
+    return x.matmul(y);
+}
+
 GraphNode &Graph::AddTensor(Shape shape)
 {
     AddNode(Tensor{*this, std::move(shape)});
     return this->nodes.back();
 }
 
+GraphNode &Graph::AddTensor(dim_t dim)
+{
+    return this->AddTensor(Shape{dim});
+}
+
 GraphNode &Graph::AddNode(GraphNode node)
 {
     this->nodes.emplace_back(node);
     return this->nodes.back();
+}
+
+Shape GetBroadcastedShape(Shape x, Shape y)
+{
+    // Ensure x.size() >= y.size()
+    if(y.size() > x.size())
+        std::swap(x, y);
+
+    for(auto i = 0; i < y.size(); i++)
+    {
+        // Store the proper dimension in dim_x
+        auto &dim_x = x[x.size() - i - 1];
+        const auto &dim_y = y[y.size() - i - 1];
+        if(dim_x == 1 && dim_y != 1)
+            dim_x = dim_y;
+        else if(dim_x != 1 && dim_y != 1)
+            continue;
+        else if(dim_x == dim_y)
+            continue;
+        else
+            throw std::domain_error("Cannot broadcast incompatible shapes");
+    }
+    return x;
 }
 
 Shape VerifyWithShape(const GraphNode &node);
@@ -257,36 +344,19 @@ Shape VerifyWithShape(const BinaryOp &u)
 {
     Shape shapex = VerifyWithShape(u.x);
     Shape shapey = VerifyWithShape(u.y);
-    if(shapex.empty())
-        return shapey;
-    if(shapey.empty())
-        return shapex;
-    if(shapex != shapey)
-        throw std::domain_error("Mismatched shape in binary op");
-    return shapex;
+    return GetBroadcastedShape(std::move(shapex), std::move(shapey));
 }
 
 Shape VerifyWithShape(const FusedOp &f)
 {
-    Shape shapes[3] =
-    {
-        VerifyWithShape(f.x),
-        VerifyWithShape(f.y),
-        VerifyWithShape(f.z),
-    };
-    int num_nonempty = 0;
-    Shape *nonempty[3];
-    for(int i = 0; i < 3; i++)
-        if(!shapes[i].empty())
-            nonempty[num_nonempty++] = &shapes[i];
+    Shape shapex = VerifyWithShape(f.x);
+    Shape shapey = VerifyWithShape(f.y);
+    Shape shapez = VerifyWithShape(f.z);
 
-    if(num_nonempty == 0)
-        return {};
-
-    for(int i = 0; i < num_nonempty - 1; i++)
-        if(*(nonempty[i]) != *(nonempty[i + 1]))
-            throw std::domain_error("Mismatched shapes in FusedOp");
-    return *(nonempty[0]);
+    // Broadcast x, y together first because multiplication gets precedence
+    Shape shapexy = GetBroadcastedShape(std::move(shapex), std::move(shapey));
+    Shape shapexyz = GetBroadcastedShape(std::move(shapexy), shapez);
+    return shapexyz;
 }
 
 Shape VerifyWithShape(const ReduceOp &r)
@@ -347,6 +417,28 @@ Shape VerifyWithShape(const ReshapeOp &r)
     return new_shape;
 }
 
+Shape VerifyWithShape(const PermuteOp &p)
+{
+    Shape shape = VerifyWithShape(p.x);
+    if(p.dims.size() != shape.size())
+        throw std::domain_error("Permute not given proper number of dimensions");
+    std::vector<bool> uniqueness(shape.size(), false);
+    Shape result(shape.size());
+    for(size_t i = 0; i < shape.size(); i++)
+    {
+        // If dim is negative, we need to fix it to be between 0 and shape.size()
+        auto dim = p.dims[i];
+        auto fixed_dim = ((dim % shape.size()) + shape.size()) % shape.size();
+        if(fixed_dim >= shape.size())
+            throw std::domain_error("Dim index out of range");
+        if(uniqueness[fixed_dim])
+            throw std::domain_error("Found repeated dim in permute");
+        uniqueness[fixed_dim] = true;
+        result[fixed_dim] = shape[i];
+    }
+    return result;
+}
+
 Shape VerifyWithShape(const GraphNode &node)
 {
     return std::visit([](auto &&arg) { return VerifyWithShape(arg); }, node);
@@ -360,11 +452,6 @@ Shape GraphNode::shape() const
 void GraphNode::Verify() const
 {
     std::visit([](auto &&arg) { VerifyWithShape(arg); }, *this);
-}
-
-void GraphNode::Codegen(std::ostringstream &s)
-{
-    this->Verify();
 }
 
 }

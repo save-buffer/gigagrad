@@ -106,7 +106,14 @@ struct ReshapeOp
     Shape shape;
 };
 
-struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, FusedOp, ReduceOp, ReshapeOp>
+struct PermuteOp
+{
+    Graph &graph;
+    const GraphNode &x;
+    Dims dims;
+};
+
+struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, FusedOp, ReduceOp, ReshapeOp, PermuteOp>
 {
     using variant::variant;
     GraphNode &sum(bool keepdim = false);
@@ -118,15 +125,21 @@ struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, FusedOp, R
 
     GraphNode &reshape(Shape shape);
     GraphNode &reshape(dim_t length);
+    GraphNode &permute(Dims dims);
+    GraphNode &transpose();
+
+    GraphNode &matmul(GraphNode &y);
+
     Shape shape() const; // Empty shape means scalar
 
     void Verify() const;
-    void Codegen(std::ostringstream &s);
 };
 
 GraphNode &exp(GraphNode &x);
 GraphNode &log(GraphNode &x);
 GraphNode &sin(GraphNode &x);
+GraphNode &operator-(GraphNode &x);
+
 GraphNode &operator+(GraphNode &x, GraphNode &y);
 GraphNode &operator+(float x, GraphNode &y);
 GraphNode &operator+(GraphNode &x, float y);
@@ -136,6 +149,8 @@ GraphNode &operator-(GraphNode &x, float y);
 GraphNode &operator*(GraphNode &x, GraphNode &y);
 GraphNode &operator*(float x, GraphNode &y);
 GraphNode &operator*(GraphNode &x, float y);
+GraphNode &operator/(GraphNode &x, GraphNode &y);
+GraphNode &operator/(float x, GraphNode &y);
 GraphNode &operator/(GraphNode &x, float y);
 GraphNode &operator^(GraphNode &x, float y);
 GraphNode &operator==(GraphNode &x, GraphNode &y);
@@ -154,10 +169,15 @@ GraphNode &max(GraphNode &x, Dims dims, bool keepdim = false);
 
 GraphNode &reshape(GraphNode &x, Shape shape);
 GraphNode &reshape(GraphNode &x, dim_t length);
+GraphNode &permute(GraphNode &x, Dims dims);
+
+GraphNode &operator%(GraphNode &x, GraphNode &y);
+GraphNode &matmul(GraphNode &x, GraphNode &y);
 
 struct Graph
 {
     GraphNode &AddTensor(Shape shape);
+    GraphNode &AddTensor(dim_t dim);
     GraphNode &AddNode(GraphNode node);
     std::deque<GraphNode> nodes;
 };
