@@ -1,5 +1,9 @@
 project('gigagrad', 'cpp', default_options : ['cpp_std=c++20'])
 gigagrad = library('gigagrad', 'src/graph.cpp')
 
-testdeps = [dependency('catch2-with-main')]
-executable('gigagrad-test', 'test/graph-test.cpp', dependencies : testdeps, link_with : gigagrad)
+test_deps = [dependency('catch2-with-main')]
+vizserver_deps = [dependency('cpp-httplib')]
+executable('gigagrad-test', 'test/graph-test.cpp', dependencies : test_deps, link_with : gigagrad)
+executable('gigagrad-viz-server', 'src/gigagrad_viz_server.cpp',
+           dependencies : vizserver_deps,
+           link_with : gigagrad)
