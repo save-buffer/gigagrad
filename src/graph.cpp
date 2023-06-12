@@ -9,6 +9,11 @@
 namespace Gigagrad
 {
 
+dim_t FixDim(dim_t dim, size_t mod)
+{
+    return ((dim % mod) + mod) % mod;
+}
+
 Graph &GetGraph(GraphNode &x)
 {
     return std::visit([](auto &&a) -> Graph & { return a.graph; }, x);
@@ -81,11 +86,34 @@ GraphNode &GraphNode::transpose()
     return this->permute(std::move(dims));
 }
 
-// axb * bxc -> axc
-// ABx1 * 
-GraphNode &GraphNode::matmul(GraphNode &x)
+// Matmul is a little tricky. We abuse the broadcasting semantics as follows:
+// If we have matrices X, Y of shape AxB and BxC, then we reshape X into a
+// AxBx1 tensor, and reshape Y into a 1xBxC matrix. Broadcasting then turns this
+// into a cube of multiplications, and then we reduce along the middle axis
+// and cut out the middle axis (since it has dim 1 anyway)
+GraphNode &GraphNode::matmul(GraphNode &y)
 {
-    
+    Shape x_shape = this->shape();
+    Shape y_shape = y.shape();
+
+    // Special case for 1-D vectors by padding them up to 2D
+    if(x_shape.size() == 1)
+        x_shape.insert(x_shape.begin(), 1);
+    if(y_shape.size() == 1)
+        y_shape.push_back(1);
+
+    if(x_shape.size() < 2 || y_shape.size() < 2)
+        throw std::domain_error("Shapes must be at least of size 2 for matmul");
+
+    x_shape.push_back(1);
+    y_shape.insert(y_shape.end() - 2, 1);
+    if(*(x_shape.end() - 2) != *(y_shape.end() - 2))
+        throw std::domain_error("Incompatible shapes in matmul");
+
+    GraphNode &x_reshaped = this->reshape(std::move(x_shape));
+    GraphNode &y_reshaped = y.reshape(std::move(y_shape));
+    GraphNode &elementwise_mul = x_reshaped * y_reshaped;
+    return elementwise_mul.sum(-2, false /* keepdim */); // Sum along the middle axis
 }
 
 GraphNode &exp(GraphNode &x)
@@ -313,7 +341,7 @@ Shape GetBroadcastedShape(Shape x, Shape y)
         const auto &dim_y = y[y.size() - i - 1];
         if(dim_x == 1 && dim_y != 1)
             dim_x = dim_y;
-        else if(dim_x != 1 && dim_y != 1)
+        else if(dim_x != 1 && dim_y == 1)
             continue;
         else if(dim_x == dim_y)
             continue;
@@ -374,9 +402,8 @@ Shape VerifyWithShape(const ReduceOp &r)
     
     for(auto dim : r.dims)
     {
-        if(dim < 0 || dim >= r.dims.size())
-            throw std::domain_error("Specified dimension is out of range on reduction operation");
-        shape[dim] = 1;
+        auto fixed_dim = FixDim(dim, shape.size());
+        shape[fixed_dim] = 1;
     }
     if(r.keepdim)
         std::remove_if(shape.begin(), shape.end(), [](auto n) { return n == 1; });
@@ -428,9 +455,7 @@ Shape VerifyWithShape(const PermuteOp &p)
     {
         // If dim is negative, we need to fix it to be between 0 and shape.size()
         auto dim = p.dims[i];
-        auto fixed_dim = ((dim % shape.size()) + shape.size()) % shape.size();
-        if(fixed_dim >= shape.size())
-            throw std::domain_error("Dim index out of range");
+        auto fixed_dim = FixDim(dim, shape.size());
         if(uniqueness[fixed_dim])
             throw std::domain_error("Found repeated dim in permute");
         uniqueness[fixed_dim] = true;
