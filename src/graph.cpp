@@ -9,9 +9,10 @@
 namespace Gigagrad
 {
 
-dim_t FixDim(dim_t dim, size_t mod)
+dim_t FixDim(dim_t dim, dim_t mod)
 {
-    return ((dim % mod) + mod) % mod;
+    auto fixed_dim = ((dim % mod) + mod) % mod;
+    return fixed_dim;
 }
 
 Graph &GetGraph(GraphNode &x)
@@ -311,15 +312,26 @@ GraphNode &matmul(GraphNode &x, GraphNode &y)
     return x.matmul(y);
 }
 
-GraphNode &Graph::AddTensor(Shape shape)
+GraphNode &Graph::AddInput(Shape shape)
 {
-    AddNode(Tensor{*this, std::move(shape)});
-    return this->nodes.back();
+    this->inputs.emplace_back(Tensor{*this, std::move(shape)});
+    return this->inputs.back();
 }
 
-GraphNode &Graph::AddTensor(dim_t dim)
+GraphNode &Graph::AddInput(dim_t dim)
 {
-    return this->AddTensor(Shape{dim});
+    return this->AddInput(Shape{dim});
+}
+
+GraphNode &Graph::AddWeight(Shape shape)
+{
+    this->weights.emplace_back(Tensor{*this, std::move(shape)});
+    return this->weights.back();
+}
+
+GraphNode &Graph::AddWeight(dim_t dim)
+{
+    return this->AddWeight(Shape{dim});
 }
 
 GraphNode &Graph::AddNode(GraphNode node)
@@ -402,11 +414,19 @@ Shape VerifyWithShape(const ReduceOp &r)
     
     for(auto dim : r.dims)
     {
-        auto fixed_dim = FixDim(dim, shape.size());
-        shape[fixed_dim] = 1;
+        auto fixed_dim = FixDim(dim, static_cast<dim_t>(shape.size()));
+        shape[fixed_dim] = -1; // Mark it as -1 for now. We'll either remove it or change it to 1 later
     }
-    if(r.keepdim)
-        std::remove_if(shape.begin(), shape.end(), [](auto n) { return n == 1; });
+    if(!r.keepdim)
+    {
+        shape.erase(std::remove(shape.begin(), shape.end(), -1), shape.end());
+    }
+    else
+    {
+        for(auto &d : shape)
+            if(d == -1)
+                d = 1;
+    }
     return shape;
 }
 
@@ -455,7 +475,7 @@ Shape VerifyWithShape(const PermuteOp &p)
     {
         // If dim is negative, we need to fix it to be between 0 and shape.size()
         auto dim = p.dims[i];
-        auto fixed_dim = FixDim(dim, shape.size());
+        auto fixed_dim = FixDim(dim, static_cast<dim_t>(shape.size()));
         if(uniqueness[fixed_dim])
             throw std::domain_error("Found repeated dim in permute");
         uniqueness[fixed_dim] = true;

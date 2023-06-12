@@ -176,9 +176,15 @@ GraphNode &matmul(GraphNode &x, GraphNode &y);
 
 struct Graph
 {
-    GraphNode &AddTensor(Shape shape);
-    GraphNode &AddTensor(dim_t dim);
+    GraphNode &AddInput(Shape shape);
+    GraphNode &AddInput(dim_t dim);
+
+    GraphNode &AddWeight(Shape shape);
+    GraphNode &AddWeight(dim_t dim);
+
     GraphNode &AddNode(GraphNode node);
+    std::deque<GraphNode> inputs;
+    std::deque<GraphNode> weights;
     std::deque<GraphNode> nodes;
 };
 
