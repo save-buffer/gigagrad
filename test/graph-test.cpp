@@ -11,6 +11,7 @@ TEST_CASE("TestLogisticRegression", "[Graph]")
     auto result = (w2 % sig);
     REQUIRE(result.shape() == Gigagrad::Shape{10, 1});
     result.Verify();
+    Gigagrad::Codegen::PrintCodegenNode(result);
 }
 
 TEST_CASE("TestCreateGraph", "[Graph]")

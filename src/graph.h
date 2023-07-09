@@ -113,7 +113,7 @@ struct PermuteOp
     Dims dims;
 };
 
-struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, FusedOp, ReduceOp, ReshapeOp, PermuteOp>
+struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, ReshapeOp, PermuteOp>
 {
     using variant::variant;
     GraphNode &sum(bool keepdim = false);
@@ -187,5 +187,10 @@ struct Graph
     std::deque<GraphNode> weights;
     std::deque<GraphNode> nodes;
 };
+
+namespace Codegen
+{
+void PrintCodegenNode(GraphNode &node);
+}
 
 }

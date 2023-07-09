@@ -1,5 +1,7 @@
 project('gigagrad', 'cpp', default_options : ['cpp_std=c++20'])
-gigagrad = library('gigagrad', 'src/graph.cpp')
+
+gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp']
+gigagrad = library('gigagrad', gigagrad_sources)
 
 test_deps = [dependency('catch2-with-main')]
 vizserver_deps = [dependency('cpp-httplib')]

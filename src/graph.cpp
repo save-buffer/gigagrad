@@ -29,6 +29,7 @@ GraphNode &WrapInUnary(GraphNode &x, UnaryOpType type)
 GraphNode &WrapInReduction(GraphNode &x, ReduceOpType type, Dims dims, bool keepdim)
 {
     Graph &graph = GetGraph(x);
+    std::sort(dims.begin(), dims.end());
     return graph.AddNode(ReduceOp{graph, type, x, std::move(dims), keepdim});
 }
 
@@ -134,7 +135,7 @@ GraphNode &sin(GraphNode &x)
 
 GraphNode &operator-(GraphNode &x)
 {
-    return 0 - x;
+    return -1 * x;
 }
 
 GraphNode &operator+(GraphNode &x, GraphNode &y)
@@ -395,7 +396,7 @@ Shape VerifyWithShape(const FusedOp &f)
 
     // Broadcast x, y together first because multiplication gets precedence
     Shape shapexy = GetBroadcastedShape(std::move(shapex), std::move(shapey));
-    Shape shapexyz = GetBroadcastedShape(std::move(shapexy), shapez);
+    Shape shapexyz = GetBroadcastedShape(std::move(shapexy), std::move(shapez));
     return shapexyz;
 }
 
