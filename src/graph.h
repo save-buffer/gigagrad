@@ -138,6 +138,7 @@ struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, 
 GraphNode &exp(GraphNode &x);
 GraphNode &log(GraphNode &x);
 GraphNode &sin(GraphNode &x);
+GraphNode &sigmoid(GraphNode &x);
 GraphNode &operator-(GraphNode &x);
 
 GraphNode &operator+(GraphNode &x, GraphNode &y);
@@ -187,10 +188,5 @@ struct Graph
     std::deque<GraphNode> weights;
     std::deque<GraphNode> nodes;
 };
-
-namespace Codegen
-{
-void PrintCodegenNode(GraphNode &node);
-}
 
 }

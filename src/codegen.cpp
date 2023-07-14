@@ -1,4 +1,6 @@
 #include "graph.h"
+#include "codegen.h"
+#include "backend.h"
 
 #include <cstdio>
 
@@ -17,237 +19,6 @@ Shape ComputeStrides(Shape shape)
     }
     return shape;
 }
-
-struct LoadIntImmediateInsn
-{
-    int64_t value;
-
-    void Print(size_t iinsn)
-    {
-        std::printf("v%zu = %lld\n", iinsn, (long long)value);
-    }
-};
-
-struct IntArithmeticInsn
-{
-    enum class Op : char
-    {
-        ADD = '+',
-        SUB = '-',
-        MUL = '*',
-        DIV = '/',
-        MOD = '%',
-    };
-    Op op;
-    size_t x;
-    size_t y;
-
-    void Print(size_t iinsn)
-    {
-        std::printf("v%zu = v%zu %c v%zu\n", iinsn, x, (char)op, y);
-    }
-};
-
-struct BeginLoopInsn
-{
-    dim_t range;
-    dim_t stride;
-
-    void Print(size_t iinsn)
-    {
-        std::printf("v%zu = LOOP [0..%zd, %zd]\n", iinsn, range, stride);
-    }
-};
-
-struct EndLoopInsn
-{
-    size_t loop;
-
-    void Print(size_t iinsn)
-    {
-        std::printf("END LOOP v%zu\n", loop);
-    }
-};
-
-struct LoadInsn
-{
-    size_t input;
-    size_t idx;
-
-    void Print(size_t iinsn)
-    {
-        std::printf("v%zu = LOAD I%zu[v%zu]\n", iinsn, input, idx);
-    }
-};
-
-struct StoreInsn
-{
-    size_t idx;
-
-    void Print(size_t iinsn)
-    {
-        std::printf("STORE [v%zu]\n", idx);
-    }
-};
-
-struct LoadImmediateInsn
-{
-    float value;
-
-    void Print(size_t iinsn)
-    {
-        std::printf("v%zu = %f\n", iinsn, value);
-    }
-};
-
-struct UnaryInsn
-{
-    UnaryOpType type;
-    size_t x;
-
-    void Print(size_t iinsn)
-    {
-        auto op_str = type == UnaryOpType::NOP ? "NOP"
-            : type == UnaryOpType::EXP ? "EXP"
-            : type == UnaryOpType::LOG ? "LOG"
-            : type == UnaryOpType::CAST ? "CAST"
-            : type == UnaryOpType::SIN ? "SIN"
-            : "INVALID";
-        std::printf("v%zu = %s(v%zu)\n", iinsn, op_str, x);
-    }
-};
-
-struct BinaryInsn
-{
-    BinaryOpType type;
-    size_t x;
-    size_t y;
-
-    void Print(size_t iinsn)
-    {
-        auto op_str = type == BinaryOpType::ADD ? "+"
-            : type == BinaryOpType::SUB ? "-"
-            : type == BinaryOpType::MUL ? "*"
-            : type == BinaryOpType::DIV ? "/"
-            : type == BinaryOpType::POW ? "^"
-            : type == BinaryOpType::CMP ? "=="
-            : type == BinaryOpType::MAX ? "max"
-            : "INVALID";
-        std::printf("v%zu = v%zu %s v%zu\n", iinsn, x, op_str, y);
-    }
-};
-
-using Instruction = std::variant<
-    LoadIntImmediateInsn,
-    IntArithmeticInsn,
-    BeginLoopInsn,
-    EndLoopInsn,
-    LoadInsn, StoreInsn,
-    LoadImmediateInsn,
-    UnaryInsn,
-    BinaryInsn>;
-
-struct FunctionBuilder
-{
-    size_t Loop(dim_t range, dim_t stride)
-    {
-        insns.emplace_back(BeginLoopInsn{range, stride});
-        return insns.size() - 1;
-    }
-
-    size_t EndLoop(size_t input_insn)
-    {
-        insns.emplace_back(EndLoopInsn{input_insn});
-        return insns.size() - 1;
-    }
-
-    size_t Input(const GraphNode &g)
-    {
-        inputs.push_back(&g);
-        return inputs.size() - 1;
-    }
-
-    size_t Load(size_t input_idx, size_t load_idx)
-    {
-        insns.emplace_back(LoadInsn{input_idx, load_idx});
-        return insns.size() - 1;
-    }
-
-    size_t Store(size_t idx)
-    {
-        insns.emplace_back(StoreInsn{idx});
-        return insns.size() - 1;
-    }
-
-    size_t Immediate(float value)
-    {
-        insns.emplace_back(LoadImmediateInsn{value});
-        return insns.size() - 1;
-    }
-
-    size_t IntImmediate(int64_t value)
-    {
-        insns.emplace_back(LoadIntImmediateInsn{value});
-        return insns.size() - 1;
-    }
-
-    size_t Arithmetic(size_t x, IntArithmeticInsn::Op op, size_t y)
-    {
-        insns.emplace_back(IntArithmeticInsn{op, x, y});
-        return insns.size() - 1;
-    }
-
-    size_t Unary(UnaryOpType type, size_t x)
-    {
-        insns.emplace_back(UnaryInsn{type, x});
-        return insns.size() - 1;
-    }
-
-    size_t Binary(BinaryOpType type, size_t x, size_t y)
-    {
-        insns.emplace_back(BinaryInsn{type, x, y});
-        return insns.size() - 1;
-    }
-
-    void Print()
-    {
-        for(auto i = 0; i < insns.size(); i++)
-        {
-            std::visit([&](auto &&insn) { insn.Print(i); }, insns[i]);
-        }
-    }
-
-    std::vector<Instruction> insns;
-    std::vector<const GraphNode *> inputs;
-    std::vector<size_t> loops;
-    static constexpr size_t Output = static_cast<size_t>(-1);
-};
-
-struct Program
-{
-    FunctionBuilder &NewFunction()
-    {
-        functions.push_back({});
-        return CurrentFunction();
-    }
-
-    FunctionBuilder &CurrentFunction()
-    {
-        return functions.back();
-    }
-
-    void Print()
-    {
-        for(size_t i = 0; i < functions.size(); i++)
-        {
-            std::printf("BEGIN FUNCTION %zu\n", i);
-            functions[i].Print();
-            std::printf("END FUNCTION %zu\n", i);
-        }
-    }
-
-    std::vector<FunctionBuilder> functions;
-};
 
 size_t CodegenNode(Program &prog, const GraphNode &node, size_t load_idx);
 
@@ -286,12 +57,13 @@ size_t CodegenNode(Program &prog, const BinaryOp &u, size_t load_idx)
             auto load = load_idx;
             for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
             {
-                printf("broadcasted_shape: %d, shape: %d\n", broadcasted_shape[i], shape[i]);
                 if(broadcasted_shape[i] != 1 && shape[i] == 1)
                 {
                     auto stride = f.IntImmediate(strides[i]);
+                    auto broadcasted = f.IntImmediate(broadcasted_shape[i]);
                     auto div = f.Arithmetic(load, IntArithmeticInsn::Op::DIV, stride);
-                    auto mul = f.Arithmetic(div, IntArithmeticInsn::Op::MUL, stride);
+                    auto mod = f.Arithmetic(div, IntArithmeticInsn::Op::MOD, broadcasted);
+                    auto mul = f.Arithmetic(mod, IntArithmeticInsn::Op::MUL, stride);
                     load = f.Arithmetic(load, IntArithmeticInsn::Op::SUB, mul);
                 }
             }
@@ -305,34 +77,59 @@ size_t CodegenNode(Program &prog, const BinaryOp &u, size_t load_idx)
     return f.Binary(u.type, x, y);
 }
 
-size_t CodegenNode(Program &prog, const ReduceOp &r, size_t load_idx)
+size_t CodegenNode(Program &prog, const ReduceOp &r, size_t output_load_idx)
 {
-    FunctionBuilder &f = prog.NewFunction();
+    FunctionBuilder &f = prog.PushFunction();
     Shape shape = r.x.shape();
     Shape strides = ComputeStrides(shape);
-    {
-        std::vector<size_t> accumulators;
-        auto reduce_dim = r.dims.begin();
 
-        auto load_idx = f.IntImmediate(0);
-        for(ssize_t i = 0; i < std::ssize(shape); i++)
+    std::vector<size_t> accumulators;
+    auto reduce_dim = r.dims.begin();
+    auto store_idx = f.IntImmediate(0);
+    for(ssize_t i = 0; i < std::ssize(shape); i++)
+    {
+        if(reduce_dim == r.dims.end() || i != *reduce_dim)
         {
-            while(i < std::ssize(shape) && (reduce_dim == r.dims.end() || i < *reduce_dim))
-            {
-                auto loop = f.Loop(shape[i], strides[i]);
-                auto stride = f.IntImmediate(strides[i]);
-                auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
-                load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
-                i++;
-            }
-            if(i == std::ssize(shape))
-                break;
-            reduce_dim++;
-            accumulators.push_back(f.Immediate(0.0f));
+            auto loop = f.Loop(shape[i], strides[i]);
+            auto stride = f.IntImmediate(strides[i]);
+            auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
+            store_idx = f.Arithmetic(store_idx, IntArithmeticInsn::Op::ADD, mul);
         }
-        CodegenNode(prog, r.x, load_idx);
     }
-        
+    auto load_idx = store_idx;
+    for(auto dim : r.dims)
+    {
+        auto mod = static_cast<dim_t>(shape.size());
+        auto fixed_dim = ((dim % mod) + mod) % mod;
+        accumulators.push_back(f.Immediate(0.0f));
+        auto loop = f.Loop(shape[fixed_dim], strides[fixed_dim]);
+        auto stride = f.IntImmediate(strides[fixed_dim]);
+        auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
+        load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
+    }
+
+    auto to_accumulate = CodegenNode(prog, r.x, load_idx);
+
+    ssize_t iaccum = std::ssize(r.dims) - 1;
+    do
+    {
+        f.Accumulate(r.type, accumulators[iaccum], to_accumulate);
+        to_accumulate = accumulators[iaccum];
+        f.EndLoop();
+        iaccum--;
+    } while(iaccum >= 0);
+    f.Store(store_idx, accumulators[0]);
+    for(ssize_t i = 0; i < std::ssize(shape) - std::ssize(r.dims) + 1; i++)
+        f.EndLoop();
+
+    prog.PopFunction();
+
+    if(prog.HasIncompleteFunctions())
+    {
+        FunctionBuilder &f = prog.CurrentFunction();
+        auto input = f.Input(r);
+        return f.Load(input, output_load_idx);
+    }
     return 0;
 }
 
@@ -353,17 +150,47 @@ size_t CodegenNode(Program &prog, const GraphNode &node, size_t load_idx)
     return std::visit([&](auto &&x) { return CodegenNode(prog, x, load_idx); }, node);
 }
 
+void EnterCodegen(Program &prog, const GraphNode &node)
+{
+    // ReduceOp generates its own for loops
+    if(std::holds_alternative<Gigagrad::ReduceOp>(node))
+    {
+        CodegenNode(prog, node, 0);
+        return;
+    }
+
+    FunctionBuilder &f = prog.PushFunction();
+    Shape shape = node.shape();
+    Shape strides = ComputeStrides(shape);
+    auto load_idx = f.IntImmediate(0);
+    for(ssize_t i = 0; i < std::ssize(shape); i++)
+    {
+        auto loop = f.Loop(shape[i], strides[i]);
+        auto stride = f.IntImmediate(strides[i]);
+        auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
+        load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
+    }
+    auto to_store = CodegenNode(prog, node, load_idx);
+    f.Store(load_idx, to_store);
+    for(ssize_t i = 0; i < std::ssize(shape); i++)
+        f.EndLoop();
+    prog.PopFunction();
+}
+}
+
 void PrintCodegenNode(GraphNode &node)
 {
-    Program prog;
-    CodegenNode(prog, node, 0);
+    Codegen::Program prog;
+    EnterCodegen(prog, node);
     prog.Print();
+    LowerProgram("BORK", Codegen::Backend::ScalarC, prog);
 }
 
-
-void CodegenNode(GraphNode &node)
+Codegen::Program CodegenNode(GraphNode &node)
 {
+    Codegen::Program result;
+    Codegen::EnterCodegen(result, node);
+    return result;
 }
 
-}
 }

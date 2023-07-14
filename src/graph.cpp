@@ -133,6 +133,11 @@ GraphNode &sin(GraphNode &x)
     return WrapInUnary(x, UnaryOpType::SIN);
 }
 
+GraphNode &sigmoid(GraphNode &x)
+{
+    return 1.0 / (1.0 + exp(-x));
+}
+
 GraphNode &operator-(GraphNode &x)
 {
     return -1 * x;

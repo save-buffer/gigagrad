@@ -1,17 +1,21 @@
 #include <catch2/catch_test_macros.hpp>
 #include "src/graph.h"
+#include "src/codegen.h"
 
 TEST_CASE("TestLogisticRegression", "[Graph]")
 {
     Gigagrad::Graph graph;
-    auto x = graph.AddInput({ 28, 28 }).reshape(28 * 28);
-    auto w1 = graph.AddWeight(28 * 28);
-    auto sig = 1.0f / (1.0f + exp(-w1 * x));
-    auto w2 = graph.AddWeight({ 10, 28 * 28 });
-    auto result = (w2 % sig);
+    auto x = graph.AddInput({ 28, 28 }).reshape({ 28 * 28, 1 });
+    auto w1 = graph.AddWeight({ 800, 28 * 28 });
+    auto b1 = graph.AddWeight({ 800, 1 });
+    auto z1 = (w1 % x) + b1;
+    auto a2 = sigmoid(z1);
+    auto w2 = graph.AddWeight({ 10, 800 });
+    auto b2 = graph.AddWeight({ 10, 1 });
+    auto result = (w2 % a2) + b2;
     REQUIRE(result.shape() == Gigagrad::Shape{10, 1});
     result.Verify();
-    Gigagrad::Codegen::PrintCodegenNode(result);
+    Gigagrad::PrintCodegenNode(result);
 }
 
 TEST_CASE("TestCreateGraph", "[Graph]")
