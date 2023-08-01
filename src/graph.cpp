@@ -352,7 +352,7 @@ Shape GetBroadcastedShape(Shape x, Shape y)
     if(y.size() > x.size())
         std::swap(x, y);
 
-    for(auto i = 0; i < y.size(); i++)
+    for(ssize_t i = 0; i < std::ssize(y); i++)
     {
         // Store the proper dimension in dim_x
         auto &dim_x = x[x.size() - i - 1];

@@ -175,6 +175,12 @@ struct FunctionBuilder
         return inputs.size() - 1;
     }
 
+    size_t Input(const size_t fn_idx)
+    {
+        inputs.push_back(fn_idx);
+        return inputs.size() - 1;
+    }
+
     size_t Load(size_t input_idx, size_t load_idx)
     {
         insns.emplace_back(LoadInsn{input_idx, load_idx});
@@ -225,40 +231,26 @@ struct FunctionBuilder
 
     void Print()
     {
-        for(auto i = 0; i < insns.size(); i++)
+        for(ssize_t i = 0; i < std::ssize(insns); i++)
         {
             std::visit([&](auto &&insn) { insn.Print(i); }, insns[i]);
         }
     }
 
     std::vector<Instruction> insns;
-    std::vector<const GraphNode *> inputs;
-    std::vector<size_t> loops;
-    static constexpr size_t Output = static_cast<size_t>(-1);
+    std::vector<std::variant<const GraphNode *, size_t>> inputs;
 };
 
 struct Program
 {
-    FunctionBuilder &PushFunction()
+    void PushFunction(FunctionBuilder function)
     {
-        function_stack.push_back({});
-        return CurrentFunction();
+        functions.emplace_back(std::move(function));
     }
 
-    void PopFunction()
+    size_t NumFunctions()
     {
-        functions.emplace_back(std::move(function_stack.back()));
-        function_stack.pop_back();
-    }
-
-    bool HasIncompleteFunctions()
-    {
-        return !function_stack.empty();
-    }
-
-    FunctionBuilder &CurrentFunction()
-    {
-        return function_stack.back();
+        return functions.size();
     }
 
     void Print()
@@ -271,8 +263,7 @@ struct Program
         }
     }
 
-    std::deque<FunctionBuilder> function_stack;
-    std::deque<FunctionBuilder> functions;
+    std::vector<FunctionBuilder> functions;
 };
 }
 void PrintCodegenNode(GraphNode &node);

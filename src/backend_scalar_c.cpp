@@ -3,6 +3,7 @@
 #include <system_error>
 #include <cstdio>
 #include <cerrno>
+#include <cstdlib>
 
 using namespace Gigagrad;
 using namespace Gigagrad::Codegen;
@@ -117,6 +118,25 @@ static void Lower_ScalarC(LowerCtx &ctx, const FunctionBuilder &fn, size_t ifn)
     std::fprintf(ctx.file, "}\n");
 }
 
+static void GenerateMain(LowerCtx &ctx)
+{
+    
+}
+
+static void Compile(const std::filesystem::path &source_path)
+{
+    std::filesystem::path obj_path = source_path;
+    obj_path.replace_extension(".so");
+    std::string command =
+        "cc " +
+        source_path.string() + 
+        " -o " +
+        obj_path.string() +
+        " -Ofast -fPIC -c -shared -lm -Ofast ";
+    std::system(command.c_str());
+    std::printf("Compiling with: %s\n", command.c_str());
+}
+
 namespace Gigagrad
 {
 namespace Codegen
@@ -125,20 +145,26 @@ namespace Internal
 {
 void Lower_ScalarC(const char *prefix, const Program &program)
 {
-    auto tmp_path = std::filesystem::temp_directory_path() / prefix;
-    tmp_path += ".c";
-    std::printf("FILE: %s\n", tmp_path.c_str());
-    FILE *file = std::fopen(tmp_path.c_str(), "w+");
+    auto file_name = std::filesystem::temp_directory_path() / prefix;
+    file_name += ".c";
+    std::printf("FILE: %s\n", file_name.c_str());
+    FILE *file = std::fopen(file_name.c_str(), "w+");
     if(!file)
     {
         throw std::system_error(errno, std::generic_category());
     }
     LowerCtx ctx = { prefix, file, 0 };
 
+    std::fprintf(file, "#include <stdint.h>\n#include <math.h>\n");
+
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
         ::Lower_ScalarC(ctx, program.functions[ifn], ifn);
 
+    GenerateMain(ctx);
+
     std::fclose(file);
+
+    Compile(file_name);
 }
 }
 }

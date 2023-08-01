@@ -20,31 +20,27 @@ Shape ComputeStrides(Shape shape)
     return shape;
 }
 
-size_t CodegenNode(Program &prog, const GraphNode &node, size_t load_idx);
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNode &node, size_t load_idx);
 
-size_t CodegenNode(Program &prog, const Tensor &t, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const Tensor &t, size_t load_idx)
 {
-    FunctionBuilder &f = prog.CurrentFunction();
     auto input = f.Input(t);
     return f.Load(input, load_idx);
 }
 
-size_t CodegenNode(Program &prog, const Immediate &i, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const Immediate &i, size_t load_idx)
 {
-    FunctionBuilder &f = prog.CurrentFunction();
     return f.Immediate(i.value);
 }
 
-size_t CodegenNode(Program &prog, const UnaryOp &u, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const UnaryOp &u, size_t load_idx)
 {
-    FunctionBuilder &f = prog.CurrentFunction();
-    auto x = CodegenNode(prog, u.x, load_idx);
+    auto x = CodegenNode(prog, f, u.x, load_idx);
     return f.Unary(u.type, x);
 }
 
-size_t CodegenNode(Program &prog, const BinaryOp &u, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const BinaryOp &u, size_t load_idx)
 {
-    FunctionBuilder &f = prog.CurrentFunction();
     Shape xshape = u.x.shape();
     Shape xstrides = ComputeStrides(xshape);
     Shape yshape = u.y.shape();
@@ -72,14 +68,15 @@ size_t CodegenNode(Program &prog, const BinaryOp &u, size_t load_idx)
 
     size_t xload = generate_stride_adjustments(xshape, xstrides);
     size_t yload = generate_stride_adjustments(yshape, ystrides);
-    auto x = CodegenNode(prog, u.x, xload);
-    auto y = CodegenNode(prog, u.y, yload);
+    auto x = CodegenNode(prog, f, u.x, xload);
+    auto y = CodegenNode(prog, f, u.y, yload);
     return f.Binary(u.type, x, y);
 }
 
-size_t CodegenNode(Program &prog, const ReduceOp &r, size_t output_load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &old_f, const ReduceOp &r, size_t output_load_idx)
 {
-    FunctionBuilder &f = prog.PushFunction();
+    FunctionBuilder f;
+
     Shape shape = r.x.shape();
     Shape strides = ComputeStrides(shape);
 
@@ -108,7 +105,7 @@ size_t CodegenNode(Program &prog, const ReduceOp &r, size_t output_load_idx)
         load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
     }
 
-    auto to_accumulate = CodegenNode(prog, r.x, load_idx);
+    auto to_accumulate = CodegenNode(prog, f, r.x, load_idx);
 
     ssize_t iaccum = std::ssize(r.dims) - 1;
     do
@@ -122,59 +119,55 @@ size_t CodegenNode(Program &prog, const ReduceOp &r, size_t output_load_idx)
     for(ssize_t i = 0; i < std::ssize(shape) - std::ssize(r.dims) + 1; i++)
         f.EndLoop();
 
-    prog.PopFunction();
+    prog.PushFunction(std::move(f));
 
-    if(prog.HasIncompleteFunctions())
-    {
-        FunctionBuilder &f = prog.CurrentFunction();
-        auto input = f.Input(r);
-        return f.Load(input, output_load_idx);
-    }
-    return 0;
+    auto input = old_f.Input(r);
+    return old_f.Load(input, output_load_idx);
 }
 
-size_t CodegenNode(Program &prog, const ReshapeOp &r, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const ReshapeOp &r, size_t load_idx)
 {
-    auto x = CodegenNode(prog, r.x, load_idx);
+    auto x = CodegenNode(prog, f, r.x, load_idx);
     return x;
 }
 
-size_t CodegenNode(Program &prog, const PermuteOp &p, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const PermuteOp &p, size_t load_idx)
 {
-    auto x = CodegenNode(prog, p.x, load_idx);
+    auto x = CodegenNode(prog, f, p.x, load_idx);
     return x;
 }
 
-size_t CodegenNode(Program &prog, const GraphNode &node, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNode &node, size_t load_idx)
 {
-    return std::visit([&](auto &&x) { return CodegenNode(prog, x, load_idx); }, node);
+    return std::visit([&](auto &&x) { return CodegenNode(prog, f, x, load_idx); }, node);
 }
 
 void EnterCodegen(Program &prog, const GraphNode &node)
 {
+    FunctionBuilder f;
     // ReduceOp generates its own for loops
     if(std::holds_alternative<Gigagrad::ReduceOp>(node))
     {
-        CodegenNode(prog, node, 0);
-        return;
+        CodegenNode(prog, f, node, 0);
     }
-
-    FunctionBuilder &f = prog.PushFunction();
-    Shape shape = node.shape();
-    Shape strides = ComputeStrides(shape);
-    auto load_idx = f.IntImmediate(0);
-    for(ssize_t i = 0; i < std::ssize(shape); i++)
+    else
     {
-        auto loop = f.Loop(shape[i], strides[i]);
-        auto stride = f.IntImmediate(strides[i]);
-        auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
-        load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
+        Shape shape = node.shape();
+        Shape strides = ComputeStrides(shape);
+        auto load_idx = f.IntImmediate(0);
+        for(ssize_t i = 0; i < std::ssize(shape); i++)
+        {
+            auto loop = f.Loop(shape[i], strides[i]);
+            auto stride = f.IntImmediate(strides[i]);
+            auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
+            load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
+        }
+        auto to_store = CodegenNode(prog, f, node, load_idx);
+        f.Store(load_idx, to_store);
+        for(ssize_t i = 0; i < std::ssize(shape); i++)
+            f.EndLoop();
     }
-    auto to_store = CodegenNode(prog, node, load_idx);
-    f.Store(load_idx, to_store);
-    for(ssize_t i = 0; i < std::ssize(shape); i++)
-        f.EndLoop();
-    prog.PopFunction();
+    prog.PushFunction(std::move(f));
 }
 }
 
