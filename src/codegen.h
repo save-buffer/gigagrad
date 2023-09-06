@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <numeric>
 
 #include "graph.h"
 
@@ -169,15 +170,9 @@ struct FunctionBuilder
         return insns.size() - 1;
     }
 
-    size_t Input(const GraphNode &g)
+    size_t Input(size_t program_input_idx)
     {
-        inputs.push_back(&g);
-        return inputs.size() - 1;
-    }
-
-    size_t Input(const size_t fn_idx)
-    {
-        inputs.push_back(fn_idx);
+        inputs.push_back(program_input_idx);
         return inputs.size() - 1;
     }
 
@@ -238,7 +233,13 @@ struct FunctionBuilder
     }
 
     std::vector<Instruction> insns;
-    std::vector<std::variant<const GraphNode *, size_t>> inputs;
+    std::vector<size_t> inputs; // Indices into the program's inputs
+};
+
+struct BufferDescriptor
+{
+    std::variant<const Tensor *, size_t> id; // Either a tensor or a function index
+    size_t size_elts;
 };
 
 struct Program
@@ -253,6 +254,27 @@ struct Program
         return functions.size();
     }
 
+    size_t AddInput(const Tensor &t)
+    {
+        for(size_t iinput = 0; iinput < inputs.size(); iinput++)
+            if(inputs[iinput].id == decltype(BufferDescriptor::id){&t})
+                return iinput;
+        size_t size = std::accumulate(
+            t.shape.begin(),
+            t.shape.end(),
+            dim_t{1},
+            std::multiplies{});
+        inputs.push_back({ &t, size });
+        return inputs.size() - 1;
+    }
+
+    size_t AddInput(const size_t fn_idx)
+    {
+        for(size_t iinput = 0; iinput < inputs.size(); iinput++)
+        {
+        }
+    }
+
     void Print()
     {
         for(size_t i = 0; i < functions.size(); i++)
@@ -264,6 +286,7 @@ struct Program
     }
 
     std::vector<FunctionBuilder> functions;
+    std::vector<BufferDescriptor> inputs;
 };
 }
 void PrintCodegenNode(GraphNode &node);

@@ -5,7 +5,6 @@
 #include <numeric>
 #include <stdexcept>
 
-
 namespace Gigagrad
 {
 

@@ -8,7 +8,7 @@ namespace Gigagrad
 {
 namespace Codegen
 {
-Shape ComputeStrides(Shape shape)
+static Shape ComputeStrides(Shape shape)
 {
     dim_t cur = 1;
     for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
@@ -24,7 +24,8 @@ size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNode &node, siz
 
 size_t CodegenNode(Program &prog, FunctionBuilder &f, const Tensor &t, size_t load_idx)
 {
-    auto input = f.Input(t);
+    auto input_idx = prog.AddInput(t);
+    auto input = f.Input(input_idx);
     return f.Load(input, load_idx);
 }
 
@@ -121,7 +122,7 @@ size_t CodegenNode(Program &prog, FunctionBuilder &old_f, const ReduceOp &r, siz
 
     prog.PushFunction(std::move(f));
 
-    auto input = old_f.Input(r);
+    auto input = old_f.Input(prog.NumFunctions() - 1);
     return old_f.Load(input, output_load_idx);
 }
 

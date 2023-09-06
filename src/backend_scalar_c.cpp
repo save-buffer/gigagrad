@@ -118,9 +118,22 @@ static void Lower_ScalarC(LowerCtx &ctx, const FunctionBuilder &fn, size_t ifn)
     std::fprintf(ctx.file, "}\n");
 }
 
-static void GenerateMain(LowerCtx &ctx)
+static void GenerateMain(const Program &program, LowerCtx &ctx)
 {
-    
+    std::fprintf(ctx.file, "void %s_main(void **buffers)\n{\n", ctx.prefix);
+    for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
+    {
+        const FunctionBuilder &fn = program.functions[ifn];
+        std::fprintf(ctx.file, "    %s_%zu(\n", ctx.prefix, ifn);
+        for(size_t iinput = 0; iinput < fn.inputs.size(); ifn++)
+        {
+            std::fprintf(ctx.file, "        buffers[%zu]", buff_id);
+            if(iinput == fn.inputs.size() - 1)
+                std::fprintf(ctx.file, ");\n");
+            else
+                std::fprintf(ctx.file, ",\n");
+        }
+    }
 }
 
 static void Compile(const std::filesystem::path &source_path)
@@ -160,7 +173,7 @@ void Lower_ScalarC(const char *prefix, const Program &program)
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
         ::Lower_ScalarC(ctx, program.functions[ifn], ifn);
 
-    GenerateMain(ctx);
+    GenerateMain(program, ctx);
 
     std::fclose(file);
 
