@@ -158,6 +158,15 @@ using Instruction = std::variant<
 
 struct FunctionBuilder
 {
+    explicit FunctionBuilder(const Shape &shape)
+    {
+        this->output_size = std::accumulate(
+            shape.begin(),
+            shape.end(),
+            dim_t{1},
+            std::multiplies{});
+    }
+
     size_t Loop(dim_t range, dim_t stride)
     {
         insns.emplace_back(BeginLoopInsn{range, stride});
@@ -233,7 +242,9 @@ struct FunctionBuilder
     }
 
     std::vector<Instruction> insns;
-    std::vector<size_t> inputs; // Indices into the program's inputs
+    std::vector<size_t> inputs; // Indices into the buffer inputs
+    size_t output_size;
+    size_t output_buffer;
 };
 
 struct BufferDescriptor
@@ -247,6 +258,7 @@ struct Program
     void PushFunction(FunctionBuilder function)
     {
         functions.emplace_back(std::move(function));
+        functions.back().output_buffer = AddBuffer(functions.size() - 1);
     }
 
     size_t NumFunctions()
@@ -254,25 +266,27 @@ struct Program
         return functions.size();
     }
 
-    size_t AddInput(const Tensor &t)
+    size_t AddBuffer(const Tensor &t)
     {
-        for(size_t iinput = 0; iinput < inputs.size(); iinput++)
-            if(inputs[iinput].id == decltype(BufferDescriptor::id){&t})
+        for(size_t iinput = 0; iinput < buffers.size(); iinput++)
+            if(buffers[iinput].id == decltype(BufferDescriptor::id){&t})
                 return iinput;
         size_t size = std::accumulate(
             t.shape.begin(),
             t.shape.end(),
             dim_t{1},
             std::multiplies{});
-        inputs.push_back({ &t, size });
-        return inputs.size() - 1;
+        buffers.push_back({ &t, size });
+        return buffers.size() - 1;
     }
 
-    size_t AddInput(const size_t fn_idx)
+    size_t AddBuffer(const size_t fn_idx)
     {
-        for(size_t iinput = 0; iinput < inputs.size(); iinput++)
-        {
-        }
+        for(size_t iinput = 0; iinput < buffers.size(); iinput++)
+            if(buffers[iinput].id == decltype(BufferDescriptor::id){fn_idx})
+                return iinput;
+        buffers.push_back({ fn_idx, functions[fn_idx].output_size });
+        return buffers.size() - 1;
     }
 
     void Print()
@@ -286,7 +300,7 @@ struct Program
     }
 
     std::vector<FunctionBuilder> functions;
-    std::vector<BufferDescriptor> inputs;
+    std::vector<BufferDescriptor> buffers;
 };
 }
 void PrintCodegenNode(GraphNode &node);

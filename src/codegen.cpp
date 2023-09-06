@@ -24,8 +24,8 @@ size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNode &node, siz
 
 size_t CodegenNode(Program &prog, FunctionBuilder &f, const Tensor &t, size_t load_idx)
 {
-    auto input_idx = prog.AddInput(t);
-    auto input = f.Input(input_idx);
+    size_t buffer_id = prog.AddBuffer(t);
+    auto input = f.Input(buffer_id);
     return f.Load(input, load_idx);
 }
 
@@ -76,7 +76,7 @@ size_t CodegenNode(Program &prog, FunctionBuilder &f, const BinaryOp &u, size_t 
 
 size_t CodegenNode(Program &prog, FunctionBuilder &old_f, const ReduceOp &r, size_t output_load_idx)
 {
-    FunctionBuilder f;
+    FunctionBuilder f(GraphNode{r}.shape());
 
     Shape shape = r.x.shape();
     Shape strides = ComputeStrides(shape);
@@ -121,8 +121,7 @@ size_t CodegenNode(Program &prog, FunctionBuilder &old_f, const ReduceOp &r, siz
         f.EndLoop();
 
     prog.PushFunction(std::move(f));
-
-    auto input = old_f.Input(prog.NumFunctions() - 1);
+    auto input = old_f.Input(prog.functions.back().output_buffer);
     return old_f.Load(input, output_load_idx);
 }
 
@@ -145,7 +144,7 @@ size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNode &node, siz
 
 void EnterCodegen(Program &prog, const GraphNode &node)
 {
-    FunctionBuilder f;
+    FunctionBuilder f(node.shape());
     // ReduceOp generates its own for loops
     if(std::holds_alternative<Gigagrad::ReduceOp>(node))
     {

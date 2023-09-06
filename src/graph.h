@@ -130,6 +130,7 @@ struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, 
 
     GraphNode &matmul(GraphNode &y);
 
+    // TODO: Cache this. I know it's terrible that we walk the tree every time
     Shape shape() const; // Empty shape means scalar
 
     void Verify() const;

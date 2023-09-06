@@ -125,15 +125,11 @@ static void GenerateMain(const Program &program, LowerCtx &ctx)
     {
         const FunctionBuilder &fn = program.functions[ifn];
         std::fprintf(ctx.file, "    %s_%zu(\n", ctx.prefix, ifn);
-        for(size_t iinput = 0; iinput < fn.inputs.size(); ifn++)
-        {
-            std::fprintf(ctx.file, "        buffers[%zu]", buff_id);
-            if(iinput == fn.inputs.size() - 1)
-                std::fprintf(ctx.file, ");\n");
-            else
-                std::fprintf(ctx.file, ",\n");
-        }
+        for(size_t iinput = 0; iinput < fn.inputs.size(); iinput++)
+            std::fprintf(ctx.file, "        buffers[%zu],\n", fn.inputs[iinput]);
+        std::fprintf(ctx.file, "        buffers[%zu]);\n", fn.output_buffer);
     }
+    std::fprintf(ctx.file, "}\n");
 }
 
 static void Compile(const std::filesystem::path &source_path)
@@ -145,7 +141,7 @@ static void Compile(const std::filesystem::path &source_path)
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        " -Ofast -fPIC -c -shared -lm -Ofast ";
+        " -Ofast -fPIC -c -shared -lm -march=native -mtune=native";
     std::system(command.c_str());
     std::printf("Compiling with: %s\n", command.c_str());
 }
