@@ -392,18 +392,6 @@ Shape VerifyWithShape(const BinaryOp &u)
     return GetBroadcastedShape(std::move(shapex), std::move(shapey));
 }
 
-Shape VerifyWithShape(const FusedOp &f)
-{
-    Shape shapex = VerifyWithShape(f.x);
-    Shape shapey = VerifyWithShape(f.y);
-    Shape shapez = VerifyWithShape(f.z);
-
-    // Broadcast x, y together first because multiplication gets precedence
-    Shape shapexy = GetBroadcastedShape(std::move(shapex), std::move(shapey));
-    Shape shapexyz = GetBroadcastedShape(std::move(shapexy), std::move(shapez));
-    return shapexyz;
-}
-
 Shape VerifyWithShape(const ReduceOp &r)
 {
     Shape shape = VerifyWithShape(r.x);

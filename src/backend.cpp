@@ -7,7 +7,7 @@ namespace Gigagrad
 namespace Codegen
 {
 
-void LowerProgram(const char *prefix, Backend backend, const Program &program)
+GraphEvalFn LowerProgram(const char *prefix, Backend backend, const Program &program)
 {
     switch(backend)
     {

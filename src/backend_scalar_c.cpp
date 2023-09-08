@@ -5,6 +5,8 @@
 #include <cerrno>
 #include <cstdlib>
 
+#include <dlfcn.h>
+
 using namespace Gigagrad;
 using namespace Gigagrad::Codegen;
 
@@ -115,24 +117,24 @@ static void Lower_ScalarC(LowerCtx &ctx, const FunctionBuilder &fn, size_t ifn)
     {
         std::visit([&](auto &&insn) { Lower_ScalarC(ctx, insn, i); }, fn.insns[i]);
     }
-    std::fprintf(ctx.file, "}\n");
+    std::fprintf(ctx.file, "}\n\n");
 }
 
 static void GenerateMain(const Program &program, LowerCtx &ctx)
 {
-    std::fprintf(ctx.file, "void %s_main(void **buffers)\n{\n", ctx.prefix);
+    std::fprintf(ctx.file, "void gigagrad_main(void **buffers)\n{\n");
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
     {
         const FunctionBuilder &fn = program.functions[ifn];
         std::fprintf(ctx.file, "    %s_%zu(\n", ctx.prefix, ifn);
         for(size_t iinput = 0; iinput < fn.inputs.size(); iinput++)
             std::fprintf(ctx.file, "        buffers[%zu],\n", fn.inputs[iinput]);
-        std::fprintf(ctx.file, "        buffers[%zu]);\n", fn.output_buffer);
+        std::fprintf(ctx.file, "        buffers[%zu]);\n\n", fn.output_buffer);
     }
     std::fprintf(ctx.file, "}\n");
 }
 
-static void Compile(const std::filesystem::path &source_path)
+static GraphEvalFn CompileAndLoad(const std::filesystem::path &source_path)
 {
     std::filesystem::path obj_path = source_path;
     obj_path.replace_extension(".so");
@@ -141,9 +143,24 @@ static void Compile(const std::filesystem::path &source_path)
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        " -Ofast -fPIC -c -shared -lm -march=native -mtune=native";
+        " -Ofast -fPIC -shared -lm -march=native -mtune=native";
     std::system(command.c_str());
     std::printf("Compiling with: %s\n", command.c_str());
+
+    void *handle = dlopen(obj_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+    if(!handle)
+        throw std::runtime_error(dlerror());
+    dlerror(); // Clear error conditions
+    auto main_fn = reinterpret_cast<GraphEvalFn>(dlsym(handle, "gigagrad_main"));
+    if(!main_fn)
+    {
+        char *err = dlerror();
+        if(!err)
+            throw std::runtime_error("Symbol gigagrad_main is NULL, which is unexpected");
+        else
+            throw std::runtime_error(err);
+    }
+    return main_fn;
 }
 
 namespace Gigagrad
@@ -152,28 +169,25 @@ namespace Codegen
 {
 namespace Internal
 {
-void Lower_ScalarC(const char *prefix, const Program &program)
+GraphEvalFn Lower_ScalarC(const char *prefix, const Program &program)
 {
     auto file_name = std::filesystem::temp_directory_path() / prefix;
     file_name += ".c";
     std::printf("FILE: %s\n", file_name.c_str());
     FILE *file = std::fopen(file_name.c_str(), "w+");
     if(!file)
-    {
         throw std::system_error(errno, std::generic_category());
-    }
+
     LowerCtx ctx = { prefix, file, 0 };
 
-    std::fprintf(file, "#include <stdint.h>\n#include <math.h>\n");
+    std::fprintf(file, "#include <stdint.h>\n#include <math.h>\n\n");
 
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
         ::Lower_ScalarC(ctx, program.functions[ifn], ifn);
 
     GenerateMain(program, ctx);
-
     std::fclose(file);
-
-    Compile(file_name);
+    return CompileAndLoad(file_name);
 }
 }
 }

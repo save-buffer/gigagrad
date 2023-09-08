@@ -1,6 +1,7 @@
 #pragma once
 
 #include <deque>
+#include <functional>
 #include <optional>
 #include <sstream>
 #include <variant>
@@ -13,7 +14,6 @@ struct Tensor;
 struct Immediate;
 struct UnaryOp;
 struct BinaryOp;
-struct FusedOp;
 struct ReduceOp;
 struct ReshapeOp;
 
@@ -43,11 +43,6 @@ enum class BinaryOpType
     MAX,
 };
 
-enum class FusedOpType
-{
-    FMA,
-};
-
 enum class ReduceOpType
 {
     SUM,
@@ -56,8 +51,12 @@ enum class ReduceOpType
 
 struct Tensor
 {
+    using InitFn = std::function<void(void *)>;
+    using LoadDataFn = std::function<void(void *, size_t)>;
     Graph &graph;
     Shape shape;
+    std::optional<InitFn> init;
+    std::optional<LoadDataFn> load;
 };
 
 struct Immediate
@@ -79,15 +78,6 @@ struct BinaryOp
     BinaryOpType type;
     const GraphNode &x;
     const GraphNode &y;
-};
-
-struct FusedOp
-{
-    Graph &graph;
-    FusedOpType type;
-    const GraphNode &x;
-    const GraphNode &y;
-    const GraphNode &z;
 };
 
 struct ReduceOp
