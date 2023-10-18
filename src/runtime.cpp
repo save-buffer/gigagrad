@@ -1,7 +1,7 @@
 #include "runtime.h"
 
-using namespace Gigagrad;
-using namespace Gigagrad::Codegen;
+using namespace gigagrad;
+using namespace gigagrad::codegen;
 
 static std::vector<void *> AllocateBuffers(const std::vector<BufferDescriptor> &buffer_descs)
 {
@@ -15,10 +15,10 @@ static std::vector<void *> AllocateBuffers(const std::vector<BufferDescriptor> &
     return result;
 }
 
-namespace Gigagrad
+namespace gigagrad
 {
 
-void Eval(Gigagrad::Codegen::GraphEvalFn fn, std::vector<BufferDescriptor> buffer_descs)
+void Eval(gigagrad::codegen::GraphEvalFn fn, std::vector<BufferDescriptor> buffer_descs)
 {
     std::vector<void *> buffers = AllocateBuffers(buffer_descs);
     for(size_t ibuff = 0; ibuff < buffer_descs.size(); ibuff++)
@@ -26,7 +26,7 @@ void Eval(Gigagrad::Codegen::GraphEvalFn fn, std::vector<BufferDescriptor> buffe
         if(std::holds_alternative<const Tensor *>(buffer_descs[ibuff].id))
         {
             const Tensor *tensor = std::get<const Tensor *>(buffer_descs[ibuff].id);
-            tensor->load_callback(buffers[ibuff])
+            tensor->load_callback(buffers[ibuff]);
         }
     }
     fn(buffers.data());

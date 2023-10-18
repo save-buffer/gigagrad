@@ -2,12 +2,15 @@
 
 #include <deque>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <variant>
 #include <vector>
 
-namespace Gigagrad
+#include "backend.h"
+
+namespace gigagrad
 {
 
 struct Tensor;
@@ -51,12 +54,13 @@ enum class ReduceOpType
 
 struct Tensor
 {
-    using InitFn = std::function<void(void *)>;
-    using LoadDataFn = std::function<void(void *, size_t)>;
+    using InitFn = std::function<void(float *)>;
+    using LoadDataFn = std::function<void(float *, size_t)>;
     Graph &graph;
     Shape shape;
-    std::optional<InitFn> init;
-    std::optional<LoadDataFn> load;
+    mutable std::optional<InitFn> init;
+    mutable std::optional<LoadDataFn> load;
+    mutable float *data = nullptr;
 };
 
 struct Immediate
@@ -69,7 +73,7 @@ struct UnaryOp
 {
     Graph &graph;
     UnaryOpType type;
-    GraphNode &x;
+    const GraphNode &x;
 };
 
 struct BinaryOp
@@ -103,78 +107,94 @@ struct PermuteOp
     Dims dims;
 };
 
+struct CompiledTensor
+{
+    float *data;
+    Shape shape;
+    std::unique_ptr<codegen::Backend> backend;
+
+    void Execute() { backend->Execute(); }
+};
+
 struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, ReshapeOp, PermuteOp>
 {
     using variant::variant;
-    GraphNode &sum(bool keepdim = false);
-    GraphNode &sum(dim_t axis, bool keepdim = false);
-    GraphNode &sum(Dims dims, bool keepdim = false);
-    GraphNode &max(bool keepdim = false);
-    GraphNode &max(dim_t axis, bool keepdim = false);
-    GraphNode &max(Dims dims, bool keepdim = false);
+    
+    const GraphNode &sum(bool keepdim = false) const;
+    const GraphNode &sum(dim_t axis, bool keepdim = false) const;
+    const GraphNode &sum(Dims dims, bool keepdim = false) const;
+    const GraphNode &max(bool keepdim = false) const;
+    const GraphNode &max(dim_t axis, bool keepdim = false) const;
+    const GraphNode &max(Dims dims, bool keepdim = false) const;
 
-    GraphNode &reshape(Shape shape);
-    GraphNode &reshape(dim_t length);
-    GraphNode &permute(Dims dims);
-    GraphNode &transpose();
+    const GraphNode &reshape(Shape shape) const;
+    const GraphNode &reshape(dim_t length) const;
+    const GraphNode &permute(Dims dims) const;
+    const GraphNode &transpose() const;
 
-    GraphNode &matmul(GraphNode &y);
+    const GraphNode &matmul(const GraphNode &y) const;
 
     // TODO: Cache this. I know it's terrible that we walk the tree every time
     Shape shape() const; // Empty shape means scalar
 
     void Verify() const;
+
+    float *&data() { return std::get<Tensor>(*this).data; }
+
+    CompiledTensor Compile(std::unique_ptr<codegen::Backend> backend) const;
+    template <typename TBackend>
+    CompiledTensor Compile() const { return Compile(std::make_unique<TBackend>()); }
 };
 
-GraphNode &exp(GraphNode &x);
-GraphNode &log(GraphNode &x);
-GraphNode &sin(GraphNode &x);
-GraphNode &sigmoid(GraphNode &x);
-GraphNode &operator-(GraphNode &x);
+const GraphNode &exp(const GraphNode &x);
+const GraphNode &log(const GraphNode &x);
+const GraphNode &sin(const GraphNode &x);
+const GraphNode &sigmoid(const GraphNode &x);
+const GraphNode &operator-(const GraphNode &x);
 
-GraphNode &operator+(GraphNode &x, GraphNode &y);
-GraphNode &operator+(float x, GraphNode &y);
-GraphNode &operator+(GraphNode &x, float y);
-GraphNode &operator-(GraphNode &x, GraphNode &y);
-GraphNode &operator-(float x, GraphNode &y);
-GraphNode &operator-(GraphNode &x, float y);
-GraphNode &operator*(GraphNode &x, GraphNode &y);
-GraphNode &operator*(float x, GraphNode &y);
-GraphNode &operator*(GraphNode &x, float y);
-GraphNode &operator/(GraphNode &x, GraphNode &y);
-GraphNode &operator/(float x, GraphNode &y);
-GraphNode &operator/(GraphNode &x, float y);
-GraphNode &operator^(GraphNode &x, float y);
-GraphNode &operator==(GraphNode &x, GraphNode &y);
-GraphNode &operator==(GraphNode &x, float y);
-GraphNode &operator==(float x, GraphNode &y);
-GraphNode &max(GraphNode &x, GraphNode &y);
-GraphNode &max(float x, GraphNode &y);
-GraphNode &max(GraphNode &x, float y);
+const GraphNode &operator+(const GraphNode &x, const GraphNode &y);
+const GraphNode &operator+(float x, const GraphNode &y);
+const GraphNode &operator+(const GraphNode &x, float y);
+const GraphNode &operator-(const GraphNode &x, const GraphNode &y);
+const GraphNode &operator-(float x, const GraphNode &y);
+const GraphNode &operator-(const GraphNode &x, float y);
+const GraphNode &operator*(const GraphNode &x, const GraphNode &y);
+const GraphNode &operator*(float x, const GraphNode &y);
+const GraphNode &operator*(const GraphNode &x, float y);
+const GraphNode &operator/(const GraphNode &x, const GraphNode &y);
+const GraphNode &operator/(float x, const GraphNode &y);
+const GraphNode &operator/(const GraphNode &x, float y);
+const GraphNode &operator^(const GraphNode &x, float y);
+const GraphNode &operator==(const GraphNode &x, const GraphNode &y);
+const GraphNode &operator==(const GraphNode &x, float y);
+const GraphNode &operator==(float x, const GraphNode &y);
+const GraphNode &max(const GraphNode &x, const GraphNode &y);
+const GraphNode &max(float x, const GraphNode &y);
+const GraphNode &max(const GraphNode &x, float y);
 
-GraphNode &sum(GraphNode &x, bool keepdim = false);
-GraphNode &sum(GraphNode &x, dim_t axis, bool keepdim = false);
-GraphNode &sum(GraphNode &x, Dims dims, bool keepdim = false);
-GraphNode &max(GraphNode &x, bool keepdim = false);
-GraphNode &max(GraphNode &x, dim_t axis, bool keepdim = false);
-GraphNode &max(GraphNode &x, Dims dims, bool keepdim = false);
+const GraphNode &sum(const GraphNode &x, bool keepdim = false);
+const GraphNode &sum(const GraphNode &x, dim_t axis, bool keepdim = false);
+const GraphNode &sum(const GraphNode &x, Dims dims, bool keepdim = false);
+const GraphNode &max(const GraphNode &x, bool keepdim = false);
+const GraphNode &max(const GraphNode &x, dim_t axis, bool keepdim = false);
+const GraphNode &max(const GraphNode &x, Dims dims, bool keepdim = false);
 
-GraphNode &reshape(GraphNode &x, Shape shape);
-GraphNode &reshape(GraphNode &x, dim_t length);
-GraphNode &permute(GraphNode &x, Dims dims);
+const GraphNode &reshape(const GraphNode &x, Shape shape);
+const GraphNode &reshape(const GraphNode &x, dim_t length);
+const GraphNode &permute(const GraphNode &x, Dims dims);
 
-GraphNode &operator%(GraphNode &x, GraphNode &y);
-GraphNode &matmul(GraphNode &x, GraphNode &y);
+const GraphNode &operator%(const GraphNode &x, const GraphNode &y);
+const GraphNode &matmul(const GraphNode &x, const GraphNode &y);
 
 struct Graph
 {
-    GraphNode &AddInput(Shape shape);
-    GraphNode &AddInput(dim_t dim);
+    const GraphNode &AddInput(Shape shape);
+    const GraphNode &AddInput(dim_t dim);
 
-    GraphNode &AddWeight(Shape shape);
-    GraphNode &AddWeight(dim_t dim);
+    const GraphNode &AddWeight(Shape shape);
+    const GraphNode &AddWeight(dim_t dim);
 
-    GraphNode &AddNode(GraphNode node);
+    const GraphNode &AddNode(GraphNode node);
     std::deque<GraphNode> inputs;
     std::deque<GraphNode> weights;
     std::deque<GraphNode> nodes;

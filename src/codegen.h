@@ -6,10 +6,11 @@
 
 #include "graph.h"
 
-namespace Gigagrad
+namespace gigagrad
 {
-namespace Codegen
+namespace codegen
 {
+
 struct LoadIntImmediateInsn
 {
     int64_t value;
@@ -303,6 +304,4 @@ struct Program
     std::vector<BufferDescriptor> buffers;
 };
 }
-void PrintCodegenNode(GraphNode &node);
-Codegen::Program CodegenNode(GraphNode &node);
 }

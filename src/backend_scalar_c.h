@@ -2,13 +2,23 @@
 #include "backend.h"
 #include "codegen.h"
 
-namespace Gigagrad
+namespace gigagrad
 {
-namespace Codegen
+namespace codegen
 {
-namespace Internal
+
+struct BackendScalarC : public Backend
 {
-GraphEvalFn Lower_ScalarC(const char *prefix, const Program &program);
-}
+    using GraphEvalFn = void (*)(void **);
+    virtual ~BackendScalarC() = default;
+    virtual void LowerProgram(Program &&program);
+    virtual void *InitBuffers();
+    virtual void Execute();
+
+    Program program;
+    std::vector<void *> buffers;
+    GraphEvalFn eval_fn;
+};
+
 }
 }

@@ -1,20 +1,19 @@
 #pragma once
-#include "codegen.h"
 
-namespace Gigagrad
+namespace gigagrad
 {
-namespace Codegen
+namespace codegen
 {
 
-enum class Backend
+struct Program;
+
+struct Backend
 {
-    ScalarC,
+    virtual ~Backend() = default;
+    virtual void LowerProgram(Program &&program) = 0;
+    virtual void *InitBuffers() = 0; // Returns output buffer
+    virtual void Execute() = 0;
 };
 
-using GraphEvalFn = void (*)(void **);
-
-// TODO: Do we need to support user-provided code generators? Should we accept some sort of
-//       class with virtual methods to codegen things? 
-GraphEvalFn LowerProgram(const char *prefix, Backend backend, const Program &program);
 }
 }

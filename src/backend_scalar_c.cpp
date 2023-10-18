@@ -7,8 +7,8 @@
 
 #include <dlfcn.h>
 
-using namespace Gigagrad;
-using namespace Gigagrad::Codegen;
+using namespace gigagrad;
+using namespace gigagrad::codegen;
 
 struct LowerCtx
 {
@@ -134,6 +134,8 @@ static void GenerateMain(const Program &program, LowerCtx &ctx)
     std::fprintf(ctx.file, "}\n");
 }
 
+using GraphEvalFn = BackendScalarC::GraphEvalFn;
+
 static GraphEvalFn CompileAndLoad(const std::filesystem::path &source_path)
 {
     std::filesystem::path obj_path = source_path;
@@ -143,9 +145,9 @@ static GraphEvalFn CompileAndLoad(const std::filesystem::path &source_path)
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        " -Ofast -fPIC -shared -lm -march=native -mtune=native";
+        " -g -fPIC -shared -lm -march=native -mtune=native";
     std::system(command.c_str());
-    std::printf("Compiling with: %s\n", command.c_str());
+    // std::printf("Compiling with: %s\n", command.c_str());
 
     void *handle = dlopen(obj_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
     if(!handle)
@@ -163,13 +165,7 @@ static GraphEvalFn CompileAndLoad(const std::filesystem::path &source_path)
     return main_fn;
 }
 
-namespace Gigagrad
-{
-namespace Codegen
-{
-namespace Internal
-{
-GraphEvalFn Lower_ScalarC(const char *prefix, const Program &program)
+static GraphEvalFn Lower_ScalarC(const char *prefix, const Program &program)
 {
     auto file_name = std::filesystem::temp_directory_path() / prefix;
     file_name += ".c";
@@ -189,6 +185,48 @@ GraphEvalFn Lower_ScalarC(const char *prefix, const Program &program)
     std::fclose(file);
     return CompileAndLoad(file_name);
 }
+
+void BackendScalarC::LowerProgram(Program &&program)
+{
+    this->program = std::move(program);
+    this->eval_fn = Lower_ScalarC("gg_scalar", this->program);
 }
+
+void *BackendScalarC::InitBuffers()
+{
+    this->buffers.reserve(this->program.buffers.size());
+    for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
+    {
+        auto &desc = this->program.buffers[ibuff];
+        if(std::holds_alternative<const Tensor *>(desc.id))
+        {
+            const Tensor *tensor = std::get<const Tensor *>(desc.id);
+            if(!tensor->data)
+                tensor->data = new float[desc.size_elts];
+            if(tensor->init)
+                (*tensor->init)(tensor->data);
+            this->buffers.push_back(reinterpret_cast<void *>(tensor->data));
+        }
+        else
+        {
+            float *intermediate_buf = new float[desc.size_elts];
+            this->buffers.push_back(reinterpret_cast<void *>(intermediate_buf));
+        }
+    }
+    return this->buffers[this->program.functions.back().output_buffer];
 }
+
+void BackendScalarC::Execute()
+{
+    for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
+    {
+        auto &desc = this->program.buffers[ibuff];
+        if(std::holds_alternative<const Tensor *>(desc.id))
+        {
+            const Tensor *tensor = std::get<const Tensor *>(desc.id);
+            this->buffers[ibuff] = (reinterpret_cast<void *>(tensor->data));
+        }
+    }
+    eval_fn(this->buffers.data());
 }
+

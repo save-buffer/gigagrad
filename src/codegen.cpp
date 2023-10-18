@@ -4,9 +4,9 @@
 
 #include <cstdio>
 
-namespace Gigagrad
+namespace gigagrad
 {
-namespace Codegen
+namespace codegen
 {
 static Shape ComputeStrides(Shape shape)
 {
@@ -144,14 +144,15 @@ size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNode &node, siz
 
 void EnterCodegen(Program &prog, const GraphNode &node)
 {
-    FunctionBuilder f(node.shape());
     // ReduceOp generates its own for loops
-    if(std::holds_alternative<Gigagrad::ReduceOp>(node))
+    if(std::holds_alternative<gigagrad::ReduceOp>(node))
     {
+        FunctionBuilder f(node.shape());
         CodegenNode(prog, f, node, 0);
     }
     else
     {
+        FunctionBuilder f(node.shape());
         Shape shape = node.shape();
         Shape strides = ComputeStrides(shape);
         auto load_idx = f.IntImmediate(0);
@@ -166,23 +167,28 @@ void EnterCodegen(Program &prog, const GraphNode &node)
         f.Store(load_idx, to_store);
         for(ssize_t i = 0; i < std::ssize(shape); i++)
             f.EndLoop();
+        prog.PushFunction(std::move(f));
     }
-    prog.PushFunction(std::move(f));
 }
 }
 
-void PrintCodegenNode(GraphNode &node)
+codegen::Program CodegenNode(const GraphNode &node)
 {
-    Codegen::Program prog;
-    EnterCodegen(prog, node);
-    prog.Print();
-    LowerProgram("BORK", Codegen::Backend::ScalarC, prog);
+    codegen::Program result;
+    codegen::EnterCodegen(result, node);
+    return result;
 }
 
-Codegen::Program CodegenNode(GraphNode &node)
+CompiledTensor GraphNode::Compile(std::unique_ptr<codegen::Backend> backend) const
 {
-    Codegen::Program result;
-    Codegen::EnterCodegen(result, node);
+    codegen::Program prog = CodegenNode(*this);
+    backend->LowerProgram(std::move(prog));
+
+    CompiledTensor result;
+    result.shape = this->shape();
+    result.data = reinterpret_cast<float *>(backend->InitBuffers());
+    result.backend = std::move(backend);
+
     return result;
 }
 

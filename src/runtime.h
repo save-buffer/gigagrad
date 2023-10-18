@@ -1,9 +1,9 @@
 #pragma once
 #include "backend.h"
 
-namespace Gigagrad
+namespace gigagrad
 {
 
-void Eval(Codegen::GraphEvalFn fn, std::vector<Codegen::BufferDescriptor> buffer_descs);
+void Eval(codegen::GraphEvalFn fn, std::vector<codegen::BufferDescriptor> buffer_descs);
 
 }

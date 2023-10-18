@@ -1,6 +1,6 @@
 project('gigagrad', 'cpp', default_options : ['cpp_std=c++20'])
 
-gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend.cpp', 'src/backend_scalar_c.cpp', 'src/runtime.cpp']
+gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend_scalar_c.cpp']
 gigagrad = library('gigagrad', gigagrad_sources)
 
 test_deps = [dependency('catch2-with-main')]

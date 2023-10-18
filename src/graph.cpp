@@ -5,7 +5,7 @@
 #include <numeric>
 #include <stdexcept>
 
-namespace Gigagrad
+namespace gigagrad
 {
 
 dim_t FixDim(dim_t dim, dim_t mod)
@@ -14,72 +14,72 @@ dim_t FixDim(dim_t dim, dim_t mod)
     return fixed_dim;
 }
 
-Graph &GetGraph(GraphNode &x)
+Graph &GetGraph(const GraphNode &x)
 {
     return std::visit([](auto &&a) -> Graph & { return a.graph; }, x);
 }
 
-GraphNode &WrapInUnary(GraphNode &x, UnaryOpType type)
+const GraphNode &WrapInUnary(const GraphNode &x, UnaryOpType type)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(UnaryOp{graph, type, x});
 }
 
-GraphNode &WrapInReduction(GraphNode &x, ReduceOpType type, Dims dims, bool keepdim)
+const GraphNode &WrapInReduction(const GraphNode &x, ReduceOpType type, Dims dims, bool keepdim)
 {
     Graph &graph = GetGraph(x);
     std::sort(dims.begin(), dims.end());
     return graph.AddNode(ReduceOp{graph, type, x, std::move(dims), keepdim});
 }
 
-GraphNode &GraphNode::sum(bool keepdim)
+const GraphNode &GraphNode::sum(bool keepdim) const
 {
     return this->sum(Dims{}, keepdim);
 }
 
-GraphNode &GraphNode::sum(dim_t dim, bool keepdim)
+const GraphNode &GraphNode::sum(dim_t dim, bool keepdim) const
 {
     return this->sum(Dims{dim}, keepdim);
 }
 
-GraphNode &GraphNode::sum(Dims dims, bool keepdim)
+const GraphNode &GraphNode::sum(Dims dims, bool keepdim) const
 {
     return WrapInReduction(*this, ReduceOpType::SUM, std::move(dims), keepdim);
 }
 
-GraphNode &GraphNode::max(bool keepdim)
+const GraphNode &GraphNode::max(bool keepdim) const
 {
     return this->max(Dims{}, keepdim);
 }
 
-GraphNode &GraphNode::max(dim_t dim, bool keepdim)
+const GraphNode &GraphNode::max(dim_t dim, bool keepdim) const
 {
     return this->max(Dims{dim}, keepdim);
 }
 
-GraphNode &GraphNode::max(Dims dims, bool keepdim)
+const GraphNode &GraphNode::max(Dims dims, bool keepdim) const
 {
     return WrapInReduction(*this, ReduceOpType::MAX, std::move(dims), keepdim);
 }
 
-GraphNode &GraphNode::reshape(Shape shape)
+const GraphNode &GraphNode::reshape(Shape shape) const
 {
     Graph &graph = GetGraph(*this);
     return graph.AddNode(ReshapeOp{graph, *this, std::move(shape)});
 }
 
-GraphNode &GraphNode::reshape(dim_t length)
+const GraphNode &GraphNode::reshape(dim_t length) const
 {
     return this->reshape(Shape{length});
 }
 
-GraphNode &GraphNode::permute(Dims dims)
+const GraphNode &GraphNode::permute(Dims dims) const
 {
     Graph &graph = GetGraph(*this);
     return graph.AddNode(PermuteOp{graph, *this, std::move(dims)});
 }
 
-GraphNode &GraphNode::transpose()
+const GraphNode &GraphNode::transpose() const
 {
     Shape shape = this->shape();
     Dims dims(shape.size());
@@ -92,7 +92,7 @@ GraphNode &GraphNode::transpose()
 // AxBx1 tensor, and reshape Y into a 1xBxC matrix. Broadcasting then turns this
 // into a cube of multiplications, and then we reduce along the middle axis
 // and cut out the middle axis (since it has dim 1 anyway)
-GraphNode &GraphNode::matmul(GraphNode &y)
+const GraphNode &GraphNode::matmul(const GraphNode &y) const
 {
     Shape x_shape = this->shape();
     Shape y_shape = y.shape();
@@ -111,235 +111,235 @@ GraphNode &GraphNode::matmul(GraphNode &y)
     if(*(x_shape.end() - 2) != *(y_shape.end() - 2))
         throw std::domain_error("Incompatible shapes in matmul");
 
-    GraphNode &x_reshaped = this->reshape(std::move(x_shape));
-    GraphNode &y_reshaped = y.reshape(std::move(y_shape));
-    GraphNode &elementwise_mul = x_reshaped * y_reshaped;
+    const GraphNode &x_reshaped = this->reshape(std::move(x_shape));
+    const GraphNode &y_reshaped = y.reshape(std::move(y_shape));
+    const GraphNode &elementwise_mul = x_reshaped * y_reshaped;
     return elementwise_mul.sum(-2, false /* keepdim */); // Sum along the middle axis
 }
 
-GraphNode &exp(GraphNode &x)
+const GraphNode &exp(const GraphNode &x)
 {
     return WrapInUnary(x, UnaryOpType::EXP);
 }
 
-GraphNode &log(GraphNode &x)
+const GraphNode &log(const GraphNode &x)
 {
     return WrapInUnary(x, UnaryOpType::LOG);
 }
 
-GraphNode &sin(GraphNode &x)
+const GraphNode &sin(const GraphNode &x)
 {
     return WrapInUnary(x, UnaryOpType::SIN);
 }
 
-GraphNode &sigmoid(GraphNode &x)
+const GraphNode &sigmoid(const GraphNode &x)
 {
     return 1.0 / (1.0 + exp(-x));
 }
 
-GraphNode &operator-(GraphNode &x)
+const GraphNode &operator-(const GraphNode &x)
 {
     return -1 * x;
 }
 
-GraphNode &operator+(GraphNode &x, GraphNode &y)
+const GraphNode &operator+(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(BinaryOp{graph, BinaryOpType::ADD, x, y});
 }
 
-GraphNode &operator+(float x, GraphNode &y)
+const GraphNode &operator+(float x, const GraphNode &y)
 {
     Graph &graph = GetGraph(y);
-    GraphNode &xnode = graph.AddNode(Immediate{graph, x});
+    const GraphNode &xnode = graph.AddNode(Immediate{graph, x});
     return xnode + y;
 }
 
-GraphNode &operator+(GraphNode &x, float y)
+const GraphNode &operator+(const GraphNode &x, float y)
 {
     return y + x;
 }
 
-GraphNode &operator-(GraphNode &x, GraphNode &y)
+const GraphNode &operator-(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(BinaryOp{graph, BinaryOpType::SUB, x, y});
 }
 
-GraphNode &operator-(float x, GraphNode &y)
+const GraphNode &operator-(float x, const GraphNode &y)
 {
     return (-x) + y;
 }
 
-GraphNode &operator-(GraphNode &x, float y)
+const GraphNode &operator-(const GraphNode &x, float y)
 {
     return x + (-y);
 }
 
-GraphNode &operator*(GraphNode &x, GraphNode &y)
+const GraphNode &operator*(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(BinaryOp{graph, BinaryOpType::MUL, x, y});
 }
 
-GraphNode &operator*(float x, GraphNode &y)
+const GraphNode &operator*(float x, const GraphNode &y)
 {
     Graph &graph = GetGraph(y);
-    GraphNode &xnode = graph.AddNode(Immediate{graph, x});
+    const GraphNode &xnode = graph.AddNode(Immediate{graph, x});
     return xnode * y;
 }
 
-GraphNode &operator*(GraphNode &x, float y)
+const GraphNode &operator*(const GraphNode &x, float y)
 {
     return y * x;
 }
 
-GraphNode &operator/(GraphNode &x, GraphNode &y)
+const GraphNode &operator/(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(BinaryOp{graph, BinaryOpType::DIV, x, y});
 }
 
-GraphNode &operator/(float x, GraphNode &y)
+const GraphNode &operator/(float x, const GraphNode &y)
 {
     Graph &graph = GetGraph(y);
-    GraphNode &xnode = graph.AddNode(Immediate{graph, x});
+    const GraphNode &xnode = graph.AddNode(Immediate{graph, x});
     return xnode / y;
 }
 
-GraphNode &operator/(GraphNode &x, float y)
+const GraphNode &operator/(const GraphNode &x, float y)
 {
     Graph &graph = GetGraph(x);
-    GraphNode &ynode = graph.AddNode(Immediate{graph, y});
+    const GraphNode &ynode = graph.AddNode(Immediate{graph, y});
     return x / ynode;
 }
 
-GraphNode &operator^(GraphNode &x, float y)
+const GraphNode &operator^(const GraphNode &x, float y)
 {
     Graph &graph = GetGraph(x);
-    GraphNode &ynode = graph.AddNode(Immediate{graph, y});
+    const GraphNode &ynode = graph.AddNode(Immediate{graph, y});
     return graph.AddNode(BinaryOp{graph, BinaryOpType::POW, x, ynode});
 }
 
-GraphNode &operator==(GraphNode &x, GraphNode &y)
+const GraphNode &operator==(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(BinaryOp{graph, BinaryOpType::CMP, x, y});
 }
 
-GraphNode &operator==(float x, GraphNode &y)
+const GraphNode &operator==(float x, const GraphNode &y)
 {
     Graph &graph = GetGraph(y);
-    GraphNode &xnode = graph.AddNode(Immediate{graph, x});
+    const GraphNode &xnode = graph.AddNode(Immediate{graph, x});
     return xnode == y;
 }
 
-GraphNode &operator==(GraphNode &x, float y)
+const GraphNode &operator==(const GraphNode &x, float y)
 {
     return y == x;
 }
 
-GraphNode &max(GraphNode &x, GraphNode &y)
+const GraphNode &max(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(BinaryOp{graph, BinaryOpType::MAX, x, y});
 }
 
-GraphNode &max(float x, GraphNode &y)
+const GraphNode &max(float x, const GraphNode &y)
 {
     Graph &graph = GetGraph(y);
-    GraphNode &xnode = graph.AddNode(Immediate{graph, x});
+    const GraphNode &xnode = graph.AddNode(Immediate{graph, x});
     return max(xnode, y);
 }
 
-GraphNode &operator%(GraphNode &x, GraphNode &y)
+const GraphNode &operator%(const GraphNode &x, const GraphNode &y)
 {
     return x.matmul(y);
 }
 
-GraphNode &max(GraphNode &x, float y)
+const GraphNode &max(const GraphNode &x, float y)
 {
     return max(y, x);
 }
 
-GraphNode &sum(GraphNode &x, bool keepdim)
+const GraphNode &sum(const GraphNode &x, bool keepdim)
 {
     return x.sum(keepdim);
 }
 
-GraphNode &sum(GraphNode &x, dim_t axis, bool keepdim)
+const GraphNode &sum(const GraphNode &x, dim_t axis, bool keepdim)
 {
     return x.sum(axis, keepdim);
 }
 
-GraphNode &sum(GraphNode &x, Dims dims, bool keepdim)
+const GraphNode &sum(const GraphNode &x, Dims dims, bool keepdim)
 {
     return x.sum(std::move(dims), keepdim);
 }
 
-GraphNode &max(GraphNode &x, bool keepdim)
+const GraphNode &max(const GraphNode &x, bool keepdim)
 {
     return x.max(keepdim);
 }
 
-GraphNode &max(GraphNode &x, dim_t axis, bool keepdim)
+const GraphNode &max(const GraphNode &x, dim_t axis, bool keepdim)
 {
     return x.max(axis, keepdim);
 }
 
-GraphNode &max(GraphNode &x, Dims dims, bool keepdim)
+const GraphNode &max(const GraphNode &x, Dims dims, bool keepdim)
 {
     return x.max(std::move(dims), keepdim);
 }
 
-GraphNode &reshape(GraphNode &x, Shape shape)
+const GraphNode &reshape(const GraphNode &x, Shape shape)
 {
     return x.reshape(std::move(shape));
 }
 
-GraphNode &reshape(GraphNode &x, dim_t length)
+const GraphNode &reshape(const GraphNode &x, dim_t length)
 {
     return x.reshape(length);
 }
 
-GraphNode &permute(GraphNode &x, Dims permutation)
+const GraphNode &permute(const GraphNode &x, Dims permutation)
 {
     return x.permute(std::move(permutation));
 }
 
-GraphNode &transpose(GraphNode &x)
+const GraphNode &transpose(const GraphNode &x)
 {
     return x.transpose();
 }
 
-GraphNode &matmul(GraphNode &x, GraphNode &y)
+const GraphNode &matmul(const GraphNode &x, const GraphNode &y)
 {
     return x.matmul(y);
 }
 
-GraphNode &Graph::AddInput(Shape shape)
+const GraphNode &Graph::AddInput(Shape shape)
 {
     this->inputs.emplace_back(Tensor{*this, std::move(shape)});
     return this->inputs.back();
 }
 
-GraphNode &Graph::AddInput(dim_t dim)
+const GraphNode &Graph::AddInput(dim_t dim)
 {
     return this->AddInput(Shape{dim});
 }
 
-GraphNode &Graph::AddWeight(Shape shape)
+const GraphNode &Graph::AddWeight(Shape shape)
 {
     this->weights.emplace_back(Tensor{*this, std::move(shape)});
     return this->weights.back();
 }
 
-GraphNode &Graph::AddWeight(dim_t dim)
+const GraphNode &Graph::AddWeight(dim_t dim)
 {
     return this->AddWeight(Shape{dim});
 }
 
-GraphNode &Graph::AddNode(GraphNode node)
+const GraphNode &Graph::AddNode(GraphNode node)
 {
     this->nodes.emplace_back(node);
     return this->nodes.back();
