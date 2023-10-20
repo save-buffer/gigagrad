@@ -81,20 +81,39 @@ size_t CodegenNode(Program &prog, FunctionBuilder &old_f, const ReduceOp &r, siz
     Shape shape = r.x.shape();
     Shape strides = ComputeStrides(shape);
 
+    auto FixDim = [&](dim_t dim)
+    {
+        auto mod = static_cast<dim_t>(shape.size());
+        return ((dim % mod) + mod) % mod;
+    };
+
+    Shape output_shape = shape;
+    for(auto dim : r.dims)
+        output_shape[FixDim(dim)] = 1;
+    Shape output_strides = ComputeStrides(output_shape);
+
     std::vector<size_t> accumulators;
-    auto reduce_dim = r.dims.begin();
+    auto reduce_dim = r.dims.begin(); // dims is sorted
     auto store_idx = f.IntImmediate(0);
+    auto load_idx = store_idx;
+
+    // Generate loops for all of the non-reducing dimensions
     for(ssize_t i = 0; i < std::ssize(shape); i++)
     {
-        if(reduce_dim == r.dims.end() || i != *reduce_dim)
+        if(reduce_dim == r.dims.end() || i != FixDim(*reduce_dim))
         {
             auto loop = f.Loop(shape[i], strides[i]);
-            auto stride = f.IntImmediate(strides[i]);
-            auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
-            store_idx = f.Arithmetic(store_idx, IntArithmeticInsn::Op::ADD, mul);
+            auto input_stride = f.IntImmediate(strides[i]);
+            auto output_stride = f.IntImmediate(output_strides[i]);
+            auto mul_input_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, input_stride);
+            auto mul_output_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, output_stride);
+            load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul_input_stride);
+            store_idx = f.Arithmetic(store_idx, IntArithmeticInsn::Op::ADD, mul_output_stride);
         }
+        else if(i == FixDim(*reduce_dim))
+            *reduce_dim++;
     }
-    auto load_idx = store_idx;
+    // Generate loops along reduction dimension
     for(auto dim : r.dims)
     {
         auto mod = static_cast<dim_t>(shape.size());
@@ -117,7 +136,7 @@ size_t CodegenNode(Program &prog, FunctionBuilder &old_f, const ReduceOp &r, siz
         iaccum--;
     } while(iaccum >= 0);
     f.Store(store_idx, accumulators[0]);
-    for(ssize_t i = 0; i < std::ssize(shape) - std::ssize(r.dims) + 1; i++)
+    for(ssize_t i = 0; i < std::ssize(shape) - std::ssize(r.dims); i++)
         f.EndLoop();
 
     prog.PushFunction(std::move(f));

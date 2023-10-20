@@ -239,6 +239,66 @@ const GraphNode &operator==(const GraphNode &x, float y)
     return y == x;
 }
 
+const GraphNode &operator<(const GraphNode &x, float y)
+{
+    return y > x;
+}
+
+const GraphNode &operator<(float x, const GraphNode &y)
+{
+    return y > x;
+}
+
+const GraphNode &operator<(const GraphNode &x, const GraphNode &y)
+{
+    return y > x;
+}
+
+const GraphNode &operator<=(const GraphNode &x, float y)
+{
+    return max(x - y, 0.0f) == 0.0f;
+}
+
+const GraphNode &operator<=(float x, const GraphNode &y)
+{
+    return max(x - y, 0.0f) == 0.0f;
+}
+
+const GraphNode &operator<=(const GraphNode &x, const GraphNode &y)
+{
+    return max(x - y, 0.0f) == 0.0f;
+}
+
+const GraphNode &operator>(const GraphNode &x, float y)
+{
+    return max(x, y) == x;
+}
+
+const GraphNode &operator>(float x, const GraphNode &y)
+{
+    return max(x, y) == x;
+}
+
+const GraphNode &operator>(const GraphNode &x, const GraphNode &y)
+{
+    return max(x, y) == x;
+}
+
+const GraphNode &operator>=(const GraphNode &x, float y)
+{
+    return min(x - y, 0.0f) == 0.0f;
+}
+
+const GraphNode &operator>=(float x, const GraphNode &y)
+{
+    return min(x - y, 0.0f) == 0.0f;
+}
+
+const GraphNode &operator>=(const GraphNode &x, const GraphNode &y)
+{
+    return min(x - y, 0.0f) == 0.0f;
+}
+
 const GraphNode &max(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
@@ -252,11 +312,6 @@ const GraphNode &max(float x, const GraphNode &y)
     return max(xnode, y);
 }
 
-const GraphNode &operator%(const GraphNode &x, const GraphNode &y)
-{
-    return x.matmul(y);
-}
-
 const GraphNode &max(const GraphNode &x, float y)
 {
     return max(y, x);
@@ -265,6 +320,21 @@ const GraphNode &max(const GraphNode &x, float y)
 const GraphNode &sum(const GraphNode &x, bool keepdim)
 {
     return x.sum(keepdim);
+}
+
+const GraphNode &min(const GraphNode &x, const GraphNode &y)
+{
+    return -max(-x, -y);
+}
+
+const GraphNode &min(float x, const GraphNode &y)
+{
+    return -max(-x, -y);
+}
+
+const GraphNode &min(const GraphNode &x, float y)
+{
+    return -max(-x, -y);
 }
 
 const GraphNode &sum(const GraphNode &x, dim_t axis, bool keepdim)
@@ -292,6 +362,21 @@ const GraphNode &max(const GraphNode &x, Dims dims, bool keepdim)
     return x.max(std::move(dims), keepdim);
 }
 
+const GraphNode &min(const GraphNode &x, bool keepdim)
+{
+    return -max(-x, keepdim);
+}
+
+const GraphNode &min(const GraphNode &x, dim_t axis, bool keepdim)
+{
+    return -max(-x, axis, keepdim);
+}
+
+const GraphNode &min(const GraphNode &x, Dims dims, bool keepdim)
+{
+    return -max(-x, std::move(dims), keepdim);
+}
+
 const GraphNode &reshape(const GraphNode &x, Shape shape)
 {
     return x.reshape(std::move(shape));
@@ -310,6 +395,11 @@ const GraphNode &permute(const GraphNode &x, Dims permutation)
 const GraphNode &transpose(const GraphNode &x)
 {
     return x.transpose();
+}
+
+const GraphNode &operator%(const GraphNode &x, const GraphNode &y)
+{
+    return x.matmul(y);
 }
 
 const GraphNode &matmul(const GraphNode &x, const GraphNode &y)

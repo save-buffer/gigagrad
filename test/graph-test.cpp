@@ -9,34 +9,37 @@ TEST_CASE("TestXor", "[Graph]")
 {
     gg::Graph graph;
     auto x = graph.AddInput(2);
-    auto w1 = graph.AddInput({ 2, 2 });
+    auto w1 = graph.AddWeight({ 2, 2 });
+    auto w2 = graph.AddWeight({ 1, 2 });
     auto b1 = graph.AddWeight({ 2, 1 });
-    auto w2 = graph.AddInput({ 1, 2 });
-    auto b2 = graph.AddWeight(1);
-    auto L1 = (w1 % x) + b1;
-    auto L2 = (w2 % L1) + b2;
+    auto L1 = (w1 % x) > b1;
+    auto L2 = (w2 % L1) > 1.5f;
     auto result = L2.Compile<gg::codegen::BackendScalarC>();
 
     REQUIRE(L1.shape() == gg::Shape{2, 1});
-    REQUIRE(result.shape == gg::Shape{1, 1});
+    REQUIRE(L2.shape() == gg::Shape{1, 1});
 
     float x_data[] = { 1.0, 1.0 };
-    float w1_data[] = { 1.0, -1.0, 1.0, -1.0 };
+    float w1_data[] = { 1.0, 1.0, -1.0, -1.0 };
     float b1_data[] = { 0.5, -1.5 };
     float w2_data[] = { 1.0, 1.0 };
-    float b2_data[] = { 1.5 };
     x.data() = x_data;
     w1.data() = w1_data;
     b1.data() = b1_data;
     w2.data() = w2_data;
-    b2.data() = b2_data;
-    result.Execute();
-    REQUIRE(result.shape == gg::Shape{1, 1});
-    REQUIRE(result.data[0] == 0.0f);
 
-    x_data[0] = 0.0;
-    result.Execute();
-    REQUIRE(result.data[0] == 1.0f);
+    for(bool x1 : { false, true })
+    {
+        x_data[0] = x1 ? 1.0f : 0.0f;
+        for(bool x2 : { false, true })
+        {
+            x_data[1] = x2 ? 1.0f : 0.0f;
+            result.Execute();
+
+            float expected = (x1 ^ x2) ? 1.0f : 0.0f;
+            REQUIRE(result.data[0] == expected);
+        }
+    }
 }
 
 TEST_CASE("TestLogisticRegression", "[Graph]")
