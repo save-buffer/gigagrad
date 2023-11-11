@@ -1,0 +1,10 @@
+- Refactor Graph representation. We probably want indices into std::vector of
+  GraphNode instead of references to GraphNode that lives in std::deque.
+- Reorganize code, create public API
+- Remove all Int insns in codegen, switch it to a "ComputeIndexInsn"
+- Add support for strides
+- Add support for more datatypes
+- Start implementing optimizations like tiling
+- Add more backends
+- More input validation
+- Handle cycles (currently this case is just ignored and probably causes an infinite recursion)

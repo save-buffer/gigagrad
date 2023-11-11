@@ -14,11 +14,6 @@ dim_t FixDim(dim_t dim, dim_t mod)
     return fixed_dim;
 }
 
-Graph &GetGraph(const GraphNode &x)
-{
-    return std::visit([](auto &&a) -> Graph & { return a.graph; }, x);
-}
-
 const GraphNode &WrapInUnary(const GraphNode &x, UnaryOpType type)
 {
     Graph &graph = GetGraph(x);
@@ -335,6 +330,26 @@ const GraphNode &min(float x, const GraphNode &y)
 const GraphNode &min(const GraphNode &x, float y)
 {
     return -max(-x, -y);
+}
+
+const GraphNode &pow(const GraphNode &x, float y)
+{
+    Graph &graph = GetGraph(x);
+    const GraphNode &ynode = graph.AddNode(Immediate{graph, y});
+    return graph.AddNode(BinaryOp{graph, BinaryOpType::POW, x, ynode});
+}
+
+const GraphNode &pow(float x, const GraphNode &y)
+{
+    Graph &graph = GetGraph(x);
+    const GraphNode &xnode = graph.AddNode(Immediate{graph, x});
+    return graph.AddNode(BinaryOp{graph, BinaryOpType::POW, xnode, y});
+}
+
+const GraphNode &pow(const GraphNode &x, const Graphnode &y)
+{
+    Graph &graph = GetGraph(x);
+    return graph.AddNode(BinaryOp{graph, BinaryOpType::POW, x, y});
 }
 
 const GraphNode &sum(const GraphNode &x, dim_t axis, bool keepdim)

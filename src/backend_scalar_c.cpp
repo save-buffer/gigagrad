@@ -201,10 +201,6 @@ void *BackendScalarC::InitBuffers()
         if(std::holds_alternative<const Tensor *>(desc.id))
         {
             const Tensor *tensor = std::get<const Tensor *>(desc.id);
-            if(!tensor->data)
-                tensor->data = new float[desc.size_elts];
-            if(tensor->init)
-                (*tensor->init)(tensor->data);
             this->buffers.push_back(reinterpret_cast<void *>(tensor->data));
         }
         else

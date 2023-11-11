@@ -54,12 +54,8 @@ enum class ReduceOpType
 
 struct Tensor
 {
-    using InitFn = std::function<void(float *)>;
-    using LoadDataFn = std::function<void(float *, size_t)>;
     Graph &graph;
     Shape shape;
-    mutable std::optional<InitFn> init;
-    mutable std::optional<LoadDataFn> load;
     mutable float *data = nullptr;
 };
 
@@ -146,6 +142,11 @@ struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, 
     CompiledTensor Compile() const { return Compile(std::make_unique<TBackend>()); }
 };
 
+inline Graph &GetGraph(const GraphNode &x)
+{
+    return std::visit([](auto &&a) -> Graph & { return a.graph; }, x);
+}
+
 const GraphNode &exp(const GraphNode &x);
 const GraphNode &log(const GraphNode &x);
 const GraphNode &sin(const GraphNode &x);
@@ -186,6 +187,9 @@ const GraphNode &max(const GraphNode &x, float y);
 const GraphNode &min(const GraphNode &x, const GraphNode &y);
 const GraphNode &min(float x, const GraphNode &y);
 const GraphNode &min(const GraphNode &x, float y);
+const GraphNode &pow(const GraphNode &x, float y);
+const GraphNode &pow(float x, const GraphNode &y);
+const GraphNode &pow(const GraphNode &x, const GraphNode &y);
 
 const GraphNode &sum(const GraphNode &x, bool keepdim = false);
 const GraphNode &sum(const GraphNode &x, dim_t axis, bool keepdim = false);
