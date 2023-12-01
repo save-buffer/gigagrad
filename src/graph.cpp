@@ -341,12 +341,12 @@ const GraphNode &pow(const GraphNode &x, float y)
 
 const GraphNode &pow(float x, const GraphNode &y)
 {
-    Graph &graph = GetGraph(x);
+    Graph &graph = GetGraph(y);
     const GraphNode &xnode = graph.AddNode(Immediate{graph, x});
     return graph.AddNode(BinaryOp{graph, BinaryOpType::POW, xnode, y});
 }
 
-const GraphNode &pow(const GraphNode &x, const Graphnode &y)
+const GraphNode &pow(const GraphNode &x, const GraphNode &y)
 {
     Graph &graph = GetGraph(x);
     return graph.AddNode(BinaryOp{graph, BinaryOpType::POW, x, y});

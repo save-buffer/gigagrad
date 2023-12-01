@@ -36,7 +36,7 @@ struct Trainer
     Trainer &TrainingData(GraphNode &input, float *inputs)
     {
         InitGraphIfNeeded(input);
-        this->inputs.emplace_back(&input, inputs);
+        this->inputs.push_back({ &input, inputs });
         return *this;
     }
 
