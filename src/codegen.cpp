@@ -144,13 +144,7 @@ size_t CodegenNode(Program &prog, FunctionBuilder &old_f, const ReduceOp &r, siz
     return old_f.Load(input, output_load_idx);
 }
 
-size_t CodegenNode(Program &prog, FunctionBuilder &f, const ReshapeOp &r, size_t load_idx)
-{
-    auto x = CodegenNode(prog, f, r.x, load_idx);
-    return x;
-}
-
-size_t CodegenNode(Program &prog, FunctionBuilder &f, const PermuteOp &p, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, const ViewOp &p, size_t load_idx)
 {
     auto x = CodegenNode(prog, f, p.x, load_idx);
     return x;

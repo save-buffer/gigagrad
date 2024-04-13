@@ -8,10 +8,24 @@
 namespace gigagrad
 {
 
-dim_t FixDim(dim_t dim, dim_t mod)
+Shape VerifyWithShape(const GraphNode &node);
+
+static dim_t FixDim(dim_t dim, dim_t mod)
 {
     auto fixed_dim = ((dim % mod) + mod) % mod;
     return fixed_dim;
+}
+
+Shape ComputeStrides(Shape shape)
+{
+    dim_t cur = 1;
+    for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
+    {
+        auto tmp = shape[i];
+        shape[i] = tmp == 1 ? 0 : cur;
+        cur *= tmp;
+    }
+    return shape;
 }
 
 const GraphNode &WrapInUnary(const GraphNode &x, UnaryOpType type)
@@ -57,10 +71,41 @@ const GraphNode &GraphNode::max(Dims dims, bool keepdim) const
     return WrapInReduction(*this, ReduceOpType::MAX, std::move(dims), keepdim);
 }
 
-const GraphNode &GraphNode::reshape(Shape shape) const
+const GraphNode &GraphNode::reshape(Shape new_shape) const
 {
     Graph &graph = GetGraph(*this);
-    return graph.AddNode(ReshapeOp{graph, *this, std::move(shape)});
+    Shape input_shape = this->shape();
+    auto num_elements = std::accumulate(input_shape.begin(), input_shape.end(), dim_t{1}, std::multiplies{});
+    auto num_implicit_dims = std::count(new_shape.begin(), new_shape.end(), -1);
+    if(num_implicit_dims == 0)
+    {
+        auto new_num_elements = std::accumulate(new_shape.begin(), new_shape.end(), dim_t{1}, std::multiplies{});
+        if(new_num_elements != num_elements)
+            throw std::domain_error("Reshape number of elements doesn't match that of input tensor");
+        Shape strides = ComputeStrides(new_shape);
+        return graph.AddNode(ViewOp{graph, *this, std::move(new_shape), std::move(strides)});
+    }
+
+    if(num_implicit_dims > 1)
+        throw std::domain_error("Reshape can have at most one implicit dimension");
+
+    auto num_elems_not_including_implicit_dim = std::accumulate(
+        new_shape.begin(),
+        new_shape.end(),
+        dim_t{1},
+        [](auto x, auto y)
+        {
+            if(y == -1)
+                return x;
+            return x * y;
+        });
+    auto remaining_dim = num_elements / num_elems_not_including_implicit_dim;
+    for(auto &x : new_shape)
+        if(x == -1)
+            x = remaining_dim;
+    
+    Shape strides = ComputeStrides(new_shape);
+    return graph.AddNode(ViewOp{graph, *this, std::move(new_shape), std::move(strides)});
 }
 
 const GraphNode &GraphNode::reshape(dim_t length) const
@@ -71,7 +116,23 @@ const GraphNode &GraphNode::reshape(dim_t length) const
 const GraphNode &GraphNode::permute(Dims dims) const
 {
     Graph &graph = GetGraph(*this);
-    return graph.AddNode(PermuteOp{graph, *this, std::move(dims)});
+    Shape shape = VerifyWithShape(*this);
+    if(dims.size() != shape.size())
+        throw std::domain_error("Permute not given proper number of dimensions");
+    std::vector<bool> uniqueness(shape.size(), false);
+    Shape new_shape(shape.size());
+    for(size_t i = 0; i < shape.size(); i++)
+    {
+        // If dim is negative, we need to fix it to be between 0 and shape.size()
+        auto dim = dims[i];
+        auto fixed_dim = FixDim(dim, static_cast<dim_t>(shape.size()));
+        if(uniqueness[fixed_dim])
+            throw std::domain_error("Found repeated dim in permute");
+        uniqueness[fixed_dim] = true;
+        new_shape[fixed_dim] = shape[i];
+    }
+    Shape strides = ComputeStrides(new_shape);
+    return graph.AddNode(ViewOp{graph, *this, std::move(new_shape), std::move(strides)});
 }
 
 const GraphNode &GraphNode::transpose() const
@@ -125,6 +186,11 @@ const GraphNode &log(const GraphNode &x)
 const GraphNode &sin(const GraphNode &x)
 {
     return WrapInUnary(x, UnaryOpType::SIN);
+}
+
+const GraphNode &cos(const GraphNode &x)
+{
+    return WrapInUnary((x + 3.14159265f/2.0f), UnaryOpType::SIN);
 }
 
 const GraphNode &sigmoid(const GraphNode &x)
@@ -422,6 +488,11 @@ const GraphNode &matmul(const GraphNode &x, const GraphNode &y)
     return x.matmul(y);
 }
 
+const GraphNode &Graph::Immediate(float imm)
+{
+    return this->AddNode(gigagrad::Immediate{*this, imm});
+}
+
 const GraphNode &Graph::AddInput(Shape shape)
 {
     this->inputs.emplace_back(Tensor{*this, std::move(shape)});
@@ -431,17 +502,6 @@ const GraphNode &Graph::AddInput(Shape shape)
 const GraphNode &Graph::AddInput(dim_t dim)
 {
     return this->AddInput(Shape{dim});
-}
-
-const GraphNode &Graph::AddWeight(Shape shape)
-{
-    this->weights.emplace_back(Tensor{*this, std::move(shape)});
-    return this->weights.back();
-}
-
-const GraphNode &Graph::AddWeight(dim_t dim)
-{
-    return this->AddWeight(Shape{dim});
 }
 
 const GraphNode &Graph::AddNode(GraphNode node)
@@ -472,8 +532,6 @@ Shape GetBroadcastedShape(Shape x, Shape y)
     }
     return x;
 }
-
-Shape VerifyWithShape(const GraphNode &node);
 
 Shape VerifyWithShape(const Tensor &t)
 {
@@ -528,58 +586,10 @@ Shape VerifyWithShape(const ReduceOp &r)
     return shape;
 }
 
-Shape VerifyWithShape(const ReshapeOp &r)
+Shape VerifyWithShape(const ViewOp &v)
 {
-    Shape input_shape = VerifyWithShape(r.x);
-    Shape new_shape = r.shape;
-    auto num_elements = std::accumulate(input_shape.begin(), input_shape.end(), dim_t{1}, std::multiplies{});
-    auto num_implicit_dims = std::count(new_shape.begin(), new_shape.end(), -1);
-    if(num_implicit_dims == 0)
-    {
-        auto new_num_elements = std::accumulate(new_shape.begin(), new_shape.end(), dim_t{1}, std::multiplies{});
-        if(new_num_elements != num_elements)
-            throw std::domain_error("Reshape number of elements doesn't match that of input tensor");
-        return new_shape;
-    }
-
-    if(num_implicit_dims > 1)
-        throw std::domain_error("Reshape can have at most one implicit dimension");
-
-    auto num_elems_not_including_implicit_dim = std::accumulate(
-        new_shape.begin(),
-        new_shape.end(),
-        dim_t{1},
-        [](auto x, auto y)
-        {
-            if(y == -1)
-                return x;
-            return x * y;
-        });
-    auto remaining_dim = num_elements / num_elems_not_including_implicit_dim;
-    for(auto &x : new_shape)
-        if(x == -1)
-            x = remaining_dim;
-    return new_shape;
-}
-
-Shape VerifyWithShape(const PermuteOp &p)
-{
-    Shape shape = VerifyWithShape(p.x);
-    if(p.dims.size() != shape.size())
-        throw std::domain_error("Permute not given proper number of dimensions");
-    std::vector<bool> uniqueness(shape.size(), false);
-    Shape result(shape.size());
-    for(size_t i = 0; i < shape.size(); i++)
-    {
-        // If dim is negative, we need to fix it to be between 0 and shape.size()
-        auto dim = p.dims[i];
-        auto fixed_dim = FixDim(dim, static_cast<dim_t>(shape.size()));
-        if(uniqueness[fixed_dim])
-            throw std::domain_error("Found repeated dim in permute");
-        uniqueness[fixed_dim] = true;
-        result[fixed_dim] = shape[i];
-    }
-    return result;
+    std::ignore = VerifyWithShape(v.x);
+    return v.shape;
 }
 
 Shape VerifyWithShape(const GraphNode &node)
@@ -595,6 +605,28 @@ Shape GraphNode::shape() const
 void GraphNode::Verify() const
 {
     std::visit([](auto &&arg) { VerifyWithShape(arg); }, *this);
+}
+
+const GraphNode &nn::Module::AddInput(Shape shape)
+{
+    return this->graph.AddInput(std::move(shape));
+}
+
+const GraphNode &nn::Module::AddInput(dim_t dim)
+{
+    return this->graph.AddInput(dim);
+}
+
+const GraphNode &nn::Module::AddWeight(Shape shape)
+{
+    this->weights.push_back(this->graph.inputs.size());
+    return this->graph.AddInput(std::move(shape));
+}
+
+const GraphNode &nn::Module::AddWeight(dim_t dim)
+{
+    this->weights.push_back(this->graph.inputs.size());
+    return this->graph.AddInput(dim);
 }
 
 }

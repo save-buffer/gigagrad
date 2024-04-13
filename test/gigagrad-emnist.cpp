@@ -244,19 +244,21 @@ int main(int argc, const char **argv)
 
     gg::Graph graph;
     auto x = graph.AddInput({ 28 * 28, 1 });
-    auto w1 = graph.AddWeight({ 800, 28 * 28 });
-    auto b1 = graph.AddWeight({ 800, 1 });
+    auto w1 = graph.AddInput({ 800, 28 * 28 });
+    auto b1 = graph.AddInput({ 800, 1 });
     auto z1 = (w1 % x) + b1;
     auto a2 = gg::sigmoid(z1);
-    auto w2 = graph.AddWeight({ 10, 800 });
-    auto b2 = graph.AddWeight({ 10, 1 });
+    auto w2 = graph.AddInput({ 10, 800 });
+    auto b2 = graph.AddInput({ 10, 1 });
     auto z2 = (w2 % a2) + b2;
     auto result = gg::sigmoid(z2);
 
+/*
     gg::Trainer trainer;
     trainer
         .Target(result, train.labels.data())
         .TrainingData(x, train.inputs.data())
         .NumTrainingPoints(train.shape[0]);
+*/
     return 0;
 }

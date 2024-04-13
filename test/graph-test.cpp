@@ -9,9 +9,9 @@ TEST_CASE("TestXor", "[Graph]")
 {
     gg::Graph graph;
     auto x = graph.AddInput(2);
-    auto w1 = graph.AddWeight({ 2, 2 });
-    auto w2 = graph.AddWeight({ 1, 2 });
-    auto b1 = graph.AddWeight({ 2, 1 });
+    auto w1 = graph.AddInput({ 2, 2 });
+    auto w2 = graph.AddInput({ 1, 2 });
+    auto b1 = graph.AddInput({ 2, 1 });
     auto L1 = (w1 % x) > b1;
     auto L2 = (w2 % L1) > 1.5f;
     auto result = L2.Compile<gg::codegen::BackendScalarC>();
@@ -46,12 +46,12 @@ TEST_CASE("TestLogisticRegression", "[Graph]")
 {
     gg::Graph graph;
     auto x = graph.AddInput({ 28, 28 }).reshape({ 28 * 28, 1 });
-    auto w1 = graph.AddWeight({ 800, 28 * 28 });
-    auto b1 = graph.AddWeight({ 800, 1 });
+    auto w1 = graph.AddInput({ 800, 28 * 28 });
+    auto b1 = graph.AddInput({ 800, 1 });
     auto z1 = (w1 % x) + b1;
     auto a2 = gg::sigmoid(z1);
-    auto w2 = graph.AddWeight({ 10, 800 });
-    auto b2 = graph.AddWeight({ 10, 1 });
+    auto w2 = graph.AddInput({ 10, 800 });
+    auto b2 = graph.AddInput({ 10, 1 });
     auto result = (w2 % a2) + b2;
     REQUIRE(result.shape() == gg::Shape{10, 1});
     result.Verify();
@@ -61,7 +61,7 @@ TEST_CASE("TestCreateGraph", "[Graph]")
 {
     gigagrad::Graph graph;
     auto tensor1 = graph.AddInput({ 2, 2 });
-    auto tensor2 = graph.AddWeight({ 2, 2 });
+    auto tensor2 = graph.AddInput({ 2, 2 });
     auto addition = tensor1 + tensor2;
 
     REQUIRE(std::holds_alternative<gg::BinaryOp>(addition));

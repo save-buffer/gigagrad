@@ -18,7 +18,6 @@ struct Immediate;
 struct UnaryOp;
 struct BinaryOp;
 struct ReduceOp;
-struct ReshapeOp;
 
 struct Graph;
 struct GraphNode;
@@ -89,18 +88,12 @@ struct ReduceOp
     bool keepdim;
 };
 
-struct ReshapeOp
+struct ViewOp
 {
     Graph &graph;
     const GraphNode &x;
     Shape shape;
-};
-
-struct PermuteOp
-{
-    Graph &graph;
-    const GraphNode &x;
-    Dims dims;
+    Shape strides;
 };
 
 struct CompiledTensor
@@ -112,7 +105,7 @@ struct CompiledTensor
     void Execute() { backend->Execute(); }
 };
 
-struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, ReshapeOp, PermuteOp>
+struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, ViewOp>
 {
     using variant::variant;
     
@@ -132,6 +125,7 @@ struct GraphNode : std::variant<Tensor, Immediate, UnaryOp, BinaryOp, ReduceOp, 
 
     // TODO: Cache this. I know it's terrible that we walk the tree every time
     Shape shape() const; // Empty shape means scalar
+    Shape strides() const;
 
     void Verify() const;
 
@@ -150,6 +144,7 @@ inline Graph &GetGraph(const GraphNode &x)
 const GraphNode &exp(const GraphNode &x);
 const GraphNode &log(const GraphNode &x);
 const GraphNode &sin(const GraphNode &x);
+const GraphNode &cos(const GraphNode &x);
 const GraphNode &sigmoid(const GraphNode &x);
 const GraphNode &operator-(const GraphNode &x);
 
@@ -210,16 +205,30 @@ const GraphNode &matmul(const GraphNode &x, const GraphNode &y);
 
 struct Graph
 {
+    const GraphNode &Immediate(float imm);
+    const GraphNode &AddInput(Shape shape);
+    const GraphNode &AddInput(dim_t dim);
+
+    const GraphNode &AddNode(GraphNode node);
+    std::deque<GraphNode> inputs;
+    std::deque<GraphNode> nodes;
+};
+
+namespace nn
+{
+
+struct Module
+{
     const GraphNode &AddInput(Shape shape);
     const GraphNode &AddInput(dim_t dim);
 
     const GraphNode &AddWeight(Shape shape);
     const GraphNode &AddWeight(dim_t dim);
-
-    const GraphNode &AddNode(GraphNode node);
-    std::deque<GraphNode> inputs;
-    std::deque<GraphNode> weights;
-    std::deque<GraphNode> nodes;
+    
+private:
+    Graph graph;
+    std::vector<size_t> weights; // Indices of forward.inputs that are weights
 };
 
+}
 }
