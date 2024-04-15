@@ -141,97 +141,107 @@ void Trainer::Train()
 }
 #endif
 
-void Differentiate(Graph &graph, const GraphNode &t, const GraphNode &seed);
-
-void Differentiate(Graph &graph, const Tensor &t, const GraphNode &seed)
+struct BackpropCtx
 {
-    // Add it to the list of tensors to compile
+    std::vector<std::pair<const Tensor *, const GraphNode *>> gradients;
+};
+
+void Differentiate(BackpropCtx &ctx, const GraphNode &t, const GraphNode &seed);
+
+void Differentiate(BackpropCtx &ctx, const Tensor &t, const GraphNode &seed)
+{
+    ctx.gradients.emplace_back({ &t, &seed });
 }
 
-void Differentiate(Graph &graph, const Immediate &i, const GraphNode &seed)
+void Differentiate(BackpropCtx &ctx, const Immediate &i, const GraphNode &seed)
 {
     // ∇c = 0, where c is a constant
     return;
 }
 
-void Differentiate(Graph &graph, const UnaryOp &u, const GraphNode &seed)
+void Differentiate(BackpropCtx &ctx, const UnaryOp &u, const GraphNode &seed)
 {
     switch(u.type)
     {
     case UnaryOpType::EXP:
         // ∇(exp(x)) = { s * exp(x) * ∂x }
-        Differentiate(graph, u.x, seed * u);
+        Differentiate(ctx, u.x, seed * u);
         break;
     case UnaryOpType::LOG:
         // ∇(log(x)) = { s/x * ∂x }
-        Differentiate(graph, u.x, seed / u.x);
+        Differentiate(ctx, u.x, seed / u.x);
         break;
     case UnaryOpType::SIN:
         // ∇(sin(x)) = { s * cos(x)∂x }
-        Differentiate(graph, u.x, cos(u.x) * seed);
+        Differentiate(ctx, u.x, cos(u.x) * seed);
         break;
     default:
         throw std::runtime_error("Unimplemented operation");
     }
 }
 
-void Differentiate(Graph &graph, const BinaryOp &b, const GraphNode &seed)
+void Differentiate(BackpropCtx &ctx, const BinaryOp &b, const GraphNode &seed)
 {
     switch(b.type)
     {
     case BinaryOpType::ADD:
         // ∇(x + y) = { ∂x, ∂y }
-        Differentiate(graph, b.x, seed);
-        Differentiate(graph, b.y, seed);
+        Differentiate(ctx, b.x, seed);
+        Differentiate(ctx, b.y, seed);
         break;
     case BinaryOpType::SUB:
         // ∇(x - y) = { ∂x, -∂y }
-        Differentiate(graph, b.x, seed);
-        Differentiate(graph, -b.y, seed);
+        Differentiate(ctx, b.x, seed);
+        Differentiate(ctx, -b.y, seed);
         break;
     case BinaryOpType::MUL:
         // ∇(x * y) = { ys * ∂x, xs * ∂y }
-        Differentiate(graph, b.x, b.y * seed);
-        Differentiate(graph, b.y, b.x * seed);
+        Differentiate(ctx, b.x, b.y * seed);
+        Differentiate(ctx, b.y, b.x * seed);
         break;
     case BinaryOpType::DIV:
         // ∇(x / y) = { s/y * ∂x, -s*x/(∂y)^2 }
-        Differentiate(graph, b.x, seed / b.y);
-        Differentiate(graph, b.y * b.y, -seed * b.x);
+        Differentiate(ctx, b.x, seed / b.y);
+        Differentiate(ctx, b.y * b.y, -seed * b.x);
         break;
     case BinaryOpType::POW:
         // ∇(x^y) = { syx^(y - 1) * ∂x, s * log(x) * x^y * ∂y }
-        Differentiate(graph, b.x, seed * b.y * pow(b.x, b.y - 1));
-        Differentiate(graph, b.y, log(b.x) * pow(b.x, b.y));
+        Differentiate(ctx, b.x, seed * b.y * pow(b.x, b.y - 1));
+        Differentiate(ctx, b.y, log(b.x) * pow(b.x, b.y));
         break;
     case BinaryOpType::CMP:
         // ∇(x == y) = { s * (x == y ? 1 : 0), s * (a == b ? 1 : 0) }
-        Differentiate(graph, b.x, seed * (b.x == b.y));
-        Differentiate(graph, b.y, seed * (b.x == b.y));
+        Differentiate(ctx, b.x, seed * (b.x == b.y));
+        Differentiate(ctx, b.y, seed * (b.x == b.y));
         break;
     case BinaryOpType::MAX:
         // ∇(max(x, y)) = { s * (x > y), s * (y >= x) }
-        Differentiate(graph, b.x, seed * (b.x > b.y));
-        Differentiate(graph, b.y, seed * (b.y >= b.x));
+        Differentiate(ctx, b.x, seed * (b.x > b.y));
+        Differentiate(ctx, b.y, seed * (b.y >= b.x));
         break;
     }
 }
 
-void Differentiate(Graph &graph, const ReduceOp &r, const GraphNode &seed)
+void Differentiate(BackpropCtx &ctx, const ReduceOp &r, const GraphNode &seed)
 {
     switch(r.type)
     {
     case ReduceOpType::SUM:
-        Differentiate(graph, r.x, seed);
+        Differentiate(ctx, r.x, seed);
         break;
     case ReduceOpType::MAX:
         break;
     }
 }
 
-void Differentiate(Graph &graph, const GraphNode &node, const GraphNode &seed)
+void Differentiate(BackpropCtx &ctx, const GraphNode &node, const GraphNode &seed)
 {
-    std::visit([&](auto &&x) { Differentiate(graph, x, seed); }, node);
+    std::visit([&](auto &&x) { Differentiate(ctx, x, seed); }, node);
+}
+
+void CodegenBackpropGraph(Graph &graph, BackpropCtx &ctx)
+{
+    
 }
 
 void Train(Graph &graph, const GraphNode &output)
@@ -241,5 +251,7 @@ void Train(Graph &graph, const GraphNode &output)
     const GraphNode &error = model_output - training_example;
     const GraphNode &loss = sum(error % error);
     const GraphNode &seed = graph.Immediate(1.0f);
-    Differentiate(graph, loss, seed);
+    BackpropCtx ctx;
+    Differentiate(ctx, loss, seed);
+    CodegenBackpropGraph(ctx);
 }
