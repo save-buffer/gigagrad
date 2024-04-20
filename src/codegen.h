@@ -267,17 +267,12 @@ struct Program
         return functions.size();
     }
 
-    size_t AddBuffer(const Tensor &t)
+    size_t AddBuffer(const Tensor &t, size_t size_elts)
     {
         for(size_t iinput = 0; iinput < buffers.size(); iinput++)
             if(buffers[iinput].id == decltype(BufferDescriptor::id){&t})
                 return iinput;
-        size_t size = std::accumulate(
-            t.shape.begin(),
-            t.shape.end(),
-            dim_t{1},
-            std::multiplies{});
-        buffers.push_back({ &t, size });
+        buffers.push_back({ &t, size_elts });
         return buffers.size() - 1;
     }
 

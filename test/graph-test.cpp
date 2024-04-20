@@ -54,7 +54,6 @@ TEST_CASE("TestLogisticRegression", "[Graph]")
     auto b2 = graph.AddInput({ 10, 1 });
     auto result = (w2 % a2) + b2;
     REQUIRE(result.shape() == gg::Shape{10, 1});
-    result.Verify();
 }
 
 TEST_CASE("TestCreateGraph", "[Graph]")
@@ -64,5 +63,5 @@ TEST_CASE("TestCreateGraph", "[Graph]")
     auto tensor2 = graph.AddInput({ 2, 2 });
     auto addition = tensor1 + tensor2;
 
-    REQUIRE(std::holds_alternative<gg::BinaryOp>(addition));
+    REQUIRE(addition->Kind() == gg::GraphNode::Kind::BinaryOp);
 }

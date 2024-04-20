@@ -1,4 +1,4 @@
-- Refactor Graph representation. We probably want indices into std::vector of
+- [DONE] Refactor Graph representation. We probably want indices into std::vector of
   GraphNode instead of references to GraphNode that lives in std::deque.
 - Reorganize code, create public API
 // - Remove all Int insns in codegen, switch it to a "ComputeIndexInsn"
