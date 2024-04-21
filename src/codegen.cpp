@@ -8,18 +8,6 @@ namespace gigagrad
 {
 namespace codegen
 {
-static Shape ComputeStrides(Shape shape)
-{
-    dim_t cur = 1;
-    for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
-    {
-        auto tmp = shape[i];
-        shape[i] = cur;
-        cur *= tmp;
-    }
-    return shape;
-}
-
 size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNodeHandle node, size_t load_idx);
 
 size_t CodegenNode(
@@ -60,13 +48,13 @@ size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
     GraphNodeHandle node,
-    const BinaryOp &u,
+    const BinaryOp &b,
     size_t load_idx)
 {
-    const Shape &xshape = u.x.shape();
-    const Shape &xstrides = u.x.strides();
-    const Shape &yshape = u.y.shape();
-    const Shape &ystrides = u.y.strides();
+    const Shape &xshape = b.x.shape();
+    const Shape &xstrides = b.x.strides();
+    const Shape &yshape = b.y.shape();
+    const Shape &ystrides = b.y.strides();
     const Shape &broadcasted_shape = node.shape();
 
     auto generate_stride_adjustments =
@@ -90,9 +78,9 @@ size_t CodegenNode(
 
     size_t xload = generate_stride_adjustments(xshape, xstrides);
     size_t yload = generate_stride_adjustments(yshape, ystrides);
-    auto x = CodegenNode(prog, f, u.x, xload);
-    auto y = CodegenNode(prog, f, u.y, yload);
-    return f.Binary(u.type, x, y);
+    auto x = CodegenNode(prog, f, b.x, xload);
+    auto y = CodegenNode(prog, f, b.y, yload);
+    return f.Binary(b.type, x, y);
 }
 
 size_t CodegenNode(
@@ -111,6 +99,7 @@ size_t CodegenNode(
 
     const Shape &input_shape = r.x.shape();
     const Shape &input_strides = r.x.strides();
+    const Shape &output_strides = node.strides();
 
     // Generate loops for all of the non-reducing dimensions
     for(ssize_t i = 0; i < std::ssize(input_shape); i++)
@@ -119,7 +108,7 @@ size_t CodegenNode(
         {
             auto loop = f.Loop(input_shape[i], input_strides[i]);
             auto input_stride = f.IntImmediate(input_strides[i]);
-            auto output_stride = f.IntImmediate(node.strides()[i]);
+            auto output_stride = f.IntImmediate(output_strides[i]);
             auto mul_input_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, input_stride);
             auto mul_output_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, output_stride);
             load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul_input_stride);
@@ -196,7 +185,7 @@ void CodegenNode(Program &prog, GraphNodeHandle node)
     {
         FunctionBuilder f(node.shape());
         const Shape &shape = node.shape();
-        const Shape &strides = ComputeStrides(shape);
+        const Shape &strides = node.strides();
         auto load_idx = f.IntImmediate(0);
         for(ssize_t i = 0; i < std::ssize(shape); i++)
         {

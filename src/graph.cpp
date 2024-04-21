@@ -43,7 +43,7 @@ static Shape ComputeStrides(Shape shape)
     for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
     {
         auto tmp = shape[i];
-        shape[i] = tmp == 1 ? 0 : cur;
+        shape[i] = cur;
         cur *= tmp;
     }
     return shape;
