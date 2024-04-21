@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <numeric>
+#include <unordered_map>
 
 #include "graph.h"
 
@@ -246,6 +247,7 @@ struct FunctionBuilder
     std::vector<size_t> inputs; // Indices into the buffer inputs
     size_t output_size;
     size_t output_buffer;
+    GraphNodeHandle node; // Node that represents the output of the function
 };
 
 struct BufferDescriptor
@@ -256,10 +258,12 @@ struct BufferDescriptor
 
 struct Program
 {
-    void PushFunction(FunctionBuilder function)
+    void PushFunction(FunctionBuilder function, GraphNodeHandle node)
     {
         functions.emplace_back(std::move(function));
         functions.back().output_buffer = AddBuffer(functions.size() - 1);
+        functions.back().node = node;
+        node_function_cache[node.node_idx] = functions.size() - 1;
     }
 
     size_t NumFunctions()
@@ -295,6 +299,7 @@ struct Program
         }
     }
 
+    std::unordered_map<size_t, size_t> node_function_cache;
     std::vector<FunctionBuilder> functions;
     std::vector<BufferDescriptor> buffers;
 };

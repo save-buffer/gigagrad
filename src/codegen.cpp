@@ -25,12 +25,11 @@ size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNodeHandle node
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
+    GraphNodeHandle node,
     const Tensor &t,
-    const Shape &shape,
-    const Shape &strides,
     size_t load_idx)
 {
-    size_t size_elts = std::accumulate(shape.begin(), shape.end(), 1, std::multiplies{});
+    size_t size_elts = std::accumulate(node.shape().begin(), node.shape().end(), 1, std::multiplies{});
     size_t buffer_id = prog.AddBuffer(t, size_elts);
     auto input = f.Input(buffer_id);
     return f.Load(input, load_idx);
@@ -39,9 +38,8 @@ size_t CodegenNode(
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
+    GraphNodeHandle,
     const Immediate &i,
-    const Shape &,
-    const Shape &,
     size_t load_idx)
 {
     return f.Immediate(i.value);
@@ -50,9 +48,8 @@ size_t CodegenNode(
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
+    GraphNodeHandle,
     const UnaryOp &u,
-    const Shape &,
-    const Shape &,
     size_t load_idx)
 {
     auto x = CodegenNode(prog, f, u.x, load_idx);
@@ -62,15 +59,15 @@ size_t CodegenNode(
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
+    GraphNodeHandle node,
     const BinaryOp &u,
-    const Shape &broadcasted_shape,
-    const Shape &strides,
     size_t load_idx)
 {
     const Shape &xshape = u.x.shape();
     const Shape &xstrides = u.x.strides();
     const Shape &yshape = u.y.shape();
-    const Shape &ystrides = ComputeStrides(yshape);
+    const Shape &ystrides = u.y.strides();
+    const Shape &broadcasted_shape = node.shape();
 
     auto generate_stride_adjustments =
         [&f, &broadcasted_shape, load_idx](const Shape &shape, const Shape &strides)
@@ -101,12 +98,11 @@ size_t CodegenNode(
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &old_f,
+    GraphNodeHandle node,
     const ReduceOp &r,
-    const Shape &shape,
-    const Shape &strides,
     size_t output_load_idx)
 {
-    FunctionBuilder f(shape);
+    FunctionBuilder f(node.shape());
 
     std::vector<size_t> accumulators;
     auto reduce_dim = r.dims.begin(); // dims is sorted
@@ -123,7 +119,7 @@ size_t CodegenNode(
         {
             auto loop = f.Loop(input_shape[i], input_strides[i]);
             auto input_stride = f.IntImmediate(input_strides[i]);
-            auto output_stride = f.IntImmediate(strides[i]);
+            auto output_stride = f.IntImmediate(node.strides()[i]);
             auto mul_input_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, input_stride);
             auto mul_output_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, output_stride);
             load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul_input_stride);
@@ -156,7 +152,7 @@ size_t CodegenNode(
     for(ssize_t i = 0; i < std::ssize(input_shape) - std::ssize(r.dims); i++)
         f.EndLoop();
 
-    prog.PushFunction(std::move(f));
+    prog.PushFunction(std::move(f), node);
     auto input = old_f.Input(prog.functions.back().output_buffer);
     return old_f.Load(input, output_load_idx);
 }
@@ -164,21 +160,31 @@ size_t CodegenNode(
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
+    GraphNodeHandle,
     const ViewOp &p,
-    const Shape &shape,
-    const Shape &strides,
     size_t load_idx)
 {
+    // TODO: Generate stride adjustmenets
     auto x = CodegenNode(prog, f, p.x, load_idx);
     return x;
 }
 
 size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx)
 {
-    return node->Visit([&](auto &&x) { return CodegenNode(prog, f, x, node.shape(), node.strides(), load_idx); });
+    if(prog.node_function_cache.contains(node.node_idx))
+    {
+        size_t function_id = prog.node_function_cache[node.node_idx];
+        size_t buffer_id = prog.functions[function_id].output_buffer;
+        auto input = f.Input(buffer_id);
+        return f.Load(input, load_idx);
+    }
+    return node->Visit([&](auto &&x)
+    {
+        return CodegenNode(prog, f, node, x, load_idx);
+    });
 }
 
-void EnterCodegen(Program &prog, GraphNodeHandle node)
+void CodegenNode(Program &prog, GraphNodeHandle node)
 {
     // ReduceOp generates its own loops
     if(node->Kind() == GraphNode::Kind::ReduceOp)
@@ -203,7 +209,7 @@ void EnterCodegen(Program &prog, GraphNodeHandle node)
         f.Store(load_idx, to_store);
         for(ssize_t i = 0; i < std::ssize(shape); i++)
             f.EndLoop();
-        prog.PushFunction(std::move(f));
+        prog.PushFunction(std::move(f), node);
     }
 }
 }
@@ -211,7 +217,7 @@ void EnterCodegen(Program &prog, GraphNodeHandle node)
 codegen::Program CodegenNode(GraphNodeHandle node)
 {
     codegen::Program result;
-    codegen::EnterCodegen(result, node);
+    codegen::CodegenNode(result, node);
     return result;
 }
 

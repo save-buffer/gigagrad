@@ -141,7 +141,6 @@ struct GraphNode
         BinaryOp,
         ReduceOp,
         ViewOp,
-        Invalid,
     };
 
     union U
@@ -154,14 +153,13 @@ struct GraphNode
         struct { Kind kind; ReduceOp reduce_op; } r;
         struct { Kind kind; ViewOp view_op; } v;
 
-        U(Tensor tensor) : t({ .kind = Kind::Tensor, .tensor = tensor }) {}
+        U(Tensor tensor) : t({ .kind = Kind::Tensor, .tensor = std::move(tensor) }) {}
         U(Immediate immediate) : i({ .kind = Kind::Immediate, .immediate = std::move(immediate) }) {}
         U(UnaryOp unary_op) : u({ .kind = Kind::UnaryOp, .unary_op = std::move(unary_op) }) {}
         U(BinaryOp binary_op) : b({ .kind = Kind::BinaryOp, .binary_op = std::move(binary_op) }) {}
         U(ReduceOp reduce_op) : r({ .kind = Kind::ReduceOp, .reduce_op = std::move(reduce_op) }) {}
         U(ViewOp view_op) : v({ .kind = Kind::ViewOp, .view_op = std::move(view_op) }) {}
 
-        U(Kind k);
         U(const U &that);
         U(U &&that);
         U &operator=(const U &that);

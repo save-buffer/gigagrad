@@ -692,140 +692,71 @@ GraphNodeHandle nn::Module::AddWeight(dim_t dim)
     return this->graph.AddInput(dim);
 }
 
-GraphNode::U::U(enum Kind kind) : k({ kind })
+GraphNode::U::U(const U &that) : k({ that.k.kind })
 {
-    switch(kind)
+    switch(this->k.kind)
     {
     case Kind::Tensor:
-        new (&this->t.tensor) Tensor;
+        new (&this->t.tensor) Tensor(that.t.tensor);
         break;
     case Kind::Immediate:
-        new (&this->i.immediate) Immediate;
+        new (&this->i.immediate) Immediate(that.i.immediate);
         break;
     case Kind::UnaryOp:
-        new (&this->u.unary_op) UnaryOp;
+        new (&this->u.unary_op) UnaryOp(that.u.unary_op);
         break;
     case Kind::BinaryOp:
-        new (&this->b.binary_op) BinaryOp;
+        new (&this->b.binary_op) BinaryOp(that.b.binary_op);
         break;
     case Kind::ReduceOp:
-        new (&this->r.reduce_op) ReduceOp;
+        new (&this->r.reduce_op) ReduceOp(that.r.reduce_op);
         break;
     case Kind::ViewOp:
-        new (&this->v.view_op) ViewOp;
+        new (&this->v.view_op) ViewOp(that.v.view_op);
         break;
     default:
         throw std::logic_error("Invalid node type!");
     }
 }
 
-GraphNode::U::U(const U &that) : U(that.k.kind)
+GraphNode::U::U(U &&that) : k({ that.k.kind })
 {
-    switch(that.k.kind)
+    switch(this->k.kind)
     {
     case Kind::Tensor:
-        this->t.tensor = that.t.tensor;
+        new (&this->t.tensor) Tensor(std::move(that.t.tensor));
         break;
     case Kind::Immediate:
-        this->i.immediate = that.i.immediate;
+        new (&this->i.immediate) Immediate(std::move(that.i.immediate));
         break;
     case Kind::UnaryOp:
-        this->u.unary_op = that.u.unary_op;
+        new (&this->u.unary_op) UnaryOp(std::move(that.u.unary_op));
         break;
     case Kind::BinaryOp:
-        this->b.binary_op = that.b.binary_op;
+        new (&this->b.binary_op) BinaryOp(std::move(that.b.binary_op));
         break;
     case Kind::ReduceOp:
-        this->r.reduce_op = that.r.reduce_op;
+        new (&this->r.reduce_op) ReduceOp(std::move(that.r.reduce_op));
         break;
     case Kind::ViewOp:
-        this->v.view_op = that.v.view_op;
+        new (&this->v.view_op) ViewOp(std::move(that.v.view_op));
         break;
     default:
-        throw std::logic_error("Invalid node type! This is a bug");
-    }
-}
-
-GraphNode::U::U(U &&that) : U(that.k.kind)
-{
-    switch(that.k.kind)
-    {
-    case Kind::Tensor:
-        this->t.tensor = std::move(that.t.tensor);
-        break;
-    case Kind::Immediate:
-        this->i.immediate = std::move(that.i.immediate);
-        break;
-    case Kind::UnaryOp:
-        this->u.unary_op = std::move(that.u.unary_op);
-        break;
-    case Kind::BinaryOp:
-        this->b.binary_op = std::move(that.b.binary_op);
-        break;
-    case Kind::ReduceOp:
-        this->r.reduce_op = std::move(that.r.reduce_op);
-        break;
-    case Kind::ViewOp:
-        this->v.view_op = std::move(that.v.view_op);
-        break;
-    default:
-        throw std::logic_error("Invalid node type! This is a bug");
+        throw std::logic_error("Invalid node type!");
     }
 }
 
 GraphNode::U &GraphNode::U::operator=(const U &that)
 {
-    switch(that.k.kind)
-    {
-    case Kind::Tensor:
-        this->t.tensor = that.t.tensor;
-        break;
-    case Kind::Immediate:
-        this->i.immediate = that.i.immediate;
-        break;
-    case Kind::UnaryOp:
-        this->u.unary_op = that.u.unary_op;
-        break;
-    case Kind::BinaryOp:
-        this->b.binary_op = that.b.binary_op;
-        break;
-    case Kind::ReduceOp:
-        this->r.reduce_op = that.r.reduce_op;
-        break;
-    case Kind::ViewOp:
-        this->v.view_op = that.v.view_op;
-        break;
-    default:
-        throw std::logic_error("Invalid node type! This is a bug");
-    }
+    this->~U();
+    new (this) U(that);
     return *this;
 }
 
 GraphNode::U &GraphNode::U::operator=(U &&that)
 {
-    switch(that.k.kind)
-    {
-    case Kind::Tensor:
-        this->t.tensor = std::move(that.t.tensor);
-        break;
-    case Kind::Immediate:
-        this->i.immediate = std::move(that.i.immediate);
-        break;
-    case Kind::UnaryOp:
-        this->u.unary_op = std::move(that.u.unary_op);
-        break;
-    case Kind::BinaryOp:
-        this->b.binary_op = std::move(that.b.binary_op);
-        break;
-    case Kind::ReduceOp:
-        this->r.reduce_op = std::move(that.r.reduce_op);
-        break;
-    case Kind::ViewOp:
-        this->v.view_op = std::move(that.v.view_op);
-        break;
-    default:
-        throw std::logic_error("Invalid node type! This is a bug");
-    }
+    this->~U();
+    new (this) U(std::move(that));
     return *this;
 }
 
