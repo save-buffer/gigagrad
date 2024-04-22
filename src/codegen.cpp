@@ -8,6 +8,7 @@ namespace gigagrad
 {
 namespace codegen
 {
+
 size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNodeHandle node, size_t load_idx);
 
 size_t CodegenNode(
@@ -90,16 +91,17 @@ size_t CodegenNode(
     const ReduceOp &r,
     size_t output_load_idx)
 {
-    FunctionBuilder f(node.shape());
+    FunctionBuilder f(node);
 
     std::vector<size_t> accumulators;
     auto reduce_dim = r.dims.begin(); // dims is sorted
+    auto ioutput_strides = node.strides().begin();
+
     auto store_idx = f.IntImmediate(0);
     auto load_idx = store_idx;
 
     const Shape &input_shape = r.x.shape();
     const Shape &input_strides = r.x.strides();
-    const Shape &output_strides = node.strides();
 
     // Generate loops for all of the non-reducing dimensions
     for(ssize_t i = 0; i < std::ssize(input_shape); i++)
@@ -108,14 +110,24 @@ size_t CodegenNode(
         {
             auto loop = f.Loop(input_shape[i], input_strides[i]);
             auto input_stride = f.IntImmediate(input_strides[i]);
-            auto output_stride = f.IntImmediate(output_strides[i]);
+            auto output_stride = f.IntImmediate(*ioutput_strides);
             auto mul_input_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, input_stride);
             auto mul_output_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, output_stride);
             load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul_input_stride);
             store_idx = f.Arithmetic(store_idx, IntArithmeticInsn::Op::ADD, mul_output_stride);
+
+            if(!r.keepdim)
+                ioutput_strides++;
         }
         else if(i == *reduce_dim)
+        {
             reduce_dim++;
+        }
+
+        // If keepdim, always advance output_strides because number of input/output
+        // dimensions matches
+        if(r.keepdim)
+            ioutput_strides++;
     }
     // Generate loops along reduction dimension
     for(auto dim : r.dims)
@@ -141,7 +153,7 @@ size_t CodegenNode(
     for(ssize_t i = 0; i < std::ssize(input_shape) - std::ssize(r.dims); i++)
         f.EndLoop();
 
-    prog.PushFunction(std::move(f), node);
+    prog.PushFunction(std::move(f));
     auto input = old_f.Input(prog.functions.back().output_buffer);
     return old_f.Load(input, output_load_idx);
 }
@@ -149,12 +161,30 @@ size_t CodegenNode(
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
-    GraphNodeHandle,
-    const ViewOp &p,
+    GraphNodeHandle node,
+    const ViewOp &v,
     size_t load_idx)
 {
-    // TODO: Generate stride adjustmenets
-    auto x = CodegenNode(prog, f, p.x, load_idx);
+    // TODO: This generates a lot of unnecessary crap right now, ideally this arithmetic
+    //       expression would get accumulated and simplified before being emitted.
+    const Shape &shape = v.shape;
+    const Shape &strides = v.strides;
+    const Shape &output_strides = node.strides();
+
+    auto new_load_idx = f.IntImmediate(0);
+    for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
+    {
+        auto output_stride = f.IntImmediate(output_strides[i]);
+        auto output_shape = f.IntImmediate(shape[i]);
+        auto input_stride = f.IntImmediate(strides[i]);
+        auto div = f.Arithmetic(load_idx, IntArithmeticInsn::Op::DIV, output_stride);
+        auto mod = f.Arithmetic(div, IntArithmeticInsn::Op::MOD, output_shape);
+        auto mul = f.Arithmetic(mod, IntArithmeticInsn::Op::MUL, input_stride);
+        new_load_idx = f.Arithmetic(new_load_idx, IntArithmeticInsn::Op::ADD, mul);
+    }
+    auto offset = f.IntImmediate(v.offset);
+    new_load_idx = f.Arithmetic(new_load_idx, IntArithmeticInsn::Op::ADD, offset);
+    auto x = CodegenNode(prog, f, v.x, new_load_idx);
     return x;
 }
 
@@ -178,12 +208,12 @@ void CodegenNode(Program &prog, GraphNodeHandle node)
     // ReduceOp generates its own loops
     if(node->Kind() == GraphNode::Kind::ReduceOp)
     {
-        FunctionBuilder f(node.shape());
+        FunctionBuilder f(node);
         CodegenNode(prog, f, node, 0);
     }
     else
     {
-        FunctionBuilder f(node.shape());
+        FunctionBuilder f(node);
         const Shape &shape = node.shape();
         const Shape &strides = node.strides();
         auto load_idx = f.IntImmediate(0);
@@ -198,7 +228,7 @@ void CodegenNode(Program &prog, GraphNodeHandle node)
         f.Store(load_idx, to_store);
         for(ssize_t i = 0; i < std::ssize(shape); i++)
             f.EndLoop();
-        prog.PushFunction(std::move(f), node);
+        prog.PushFunction(std::move(f));
     }
 }
 }

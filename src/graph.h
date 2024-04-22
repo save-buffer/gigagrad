@@ -129,6 +129,9 @@ struct ReduceOp
 struct ViewOp
 {
     GraphNodeHandle x;
+    Shape shape;
+    Shape strides;
+    dim_t offset;
 };
 
 struct GraphNode
@@ -264,12 +267,12 @@ struct Graph
     GraphNodeHandle AddInput(Shape shape);
     GraphNodeHandle AddInput(dim_t dim);
 
-    GraphNodeHandle AddNode(struct Tensor, Shape shape, Shape strides);
+    GraphNodeHandle AddNode(struct Tensor, Shape shape);
     GraphNodeHandle AddNode(struct Immediate);
     GraphNodeHandle AddNode(struct UnaryOp);
     GraphNodeHandle AddNode(struct BinaryOp);
     GraphNodeHandle AddNode(struct ReduceOp);
-    GraphNodeHandle AddNode(struct ViewOp, Shape shape, Shape strides);
+    GraphNodeHandle AddNode(struct ViewOp);
 
     GraphNodeHandle AddNode(GraphNode node);
 

@@ -14,7 +14,19 @@ static dim_t FixDim(dim_t dim, dim_t mod)
     return fixed_dim;
 }
 
-static Shape GetBroadcastedShape(const Shape &x, const Shape &y)
+static Shape ComputeStrides(Shape shape)
+{
+    dim_t cur = 1;
+    for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
+    {
+        auto tmp = shape[i];
+        shape[i] = cur;
+        cur *= tmp;
+    }
+    return shape;
+}
+
+static Shape ComputeBroadcastedShape(const Shape &x, const Shape &y)
 {
     // Ensure x.size() >= y.size()
     Shape larger = x.size() > y.size() ? x : y;
@@ -35,18 +47,6 @@ static Shape GetBroadcastedShape(const Shape &x, const Shape &y)
             throw std::domain_error("Cannot broadcast incompatible shapes");
     }
     return larger;
-}
-
-static Shape ComputeStrides(Shape shape)
-{
-    dim_t cur = 1;
-    for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
-    {
-        auto tmp = shape[i];
-        shape[i] = cur;
-        cur *= tmp;
-    }
-    return shape;
 }
 
 static Shape ComputeReducedShape(const ReduceOp &op)
@@ -140,7 +140,7 @@ GraphNodeHandle GraphNodeHandle::reshape(Shape new_shape) const
         if(new_num_elements != num_elements)
             throw std::domain_error("Reshape number of elements doesn't match that of input tensor");
         Shape strides = ComputeStrides(new_shape);
-        return graph->AddNode(ViewOp{*this}, std::move(new_shape), std::move(strides));
+        return graph->AddNode(ViewOp{*this, std::move(new_shape), std::move(strides), 0});
     }
 
     if(num_implicit_dims > 1)
@@ -162,7 +162,7 @@ GraphNodeHandle GraphNodeHandle::reshape(Shape new_shape) const
             x = remaining_dim;
     
     Shape strides = ComputeStrides(new_shape);
-    return graph->AddNode(ViewOp{*this}, std::move(new_shape), std::move(strides));
+    return graph->AddNode(ViewOp{*this, std::move(new_shape), std::move(strides), 0});
 }
 
 GraphNodeHandle GraphNodeHandle::reshape(dim_t length) const
@@ -189,7 +189,7 @@ GraphNodeHandle GraphNodeHandle::permute(Dims dims) const
         new_shape[fixed_dim] = shape[i];
     }
     Shape strides = ComputeStrides(new_shape);
-    return graph->AddNode(ViewOp{*this}, std::move(new_shape), std::move(strides));
+    return graph->AddNode(ViewOp{*this, std::move(new_shape), std::move(strides), 0});
 }
 
 GraphNodeHandle GraphNodeHandle::transpose() const
@@ -553,8 +553,7 @@ GraphNodeHandle Graph::Immediate(float imm)
 GraphNodeHandle Graph::AddInput(Shape shape)
 {
     this->inputs.push_back(this->nodes.size());
-    Shape strides = ComputeStrides(shape);
-    GraphNodeHandle result = this->AddNode(Tensor{}, std::move(shape), std::move(strides));
+    GraphNodeHandle result = this->AddNode(Tensor{}, std::move(shape));
     return result;
 }
 
@@ -563,8 +562,9 @@ GraphNodeHandle Graph::AddInput(dim_t dim)
     return this->AddInput(Shape{dim});
 }
 
-GraphNodeHandle Graph::AddNode(Tensor tensor, Shape shape, Shape strides)
+GraphNodeHandle Graph::AddNode(Tensor tensor, Shape shape)
 {
+    Shape strides = ComputeStrides(shape);
     return this->AddNode(
         GraphNode
         {
@@ -598,7 +598,7 @@ GraphNodeHandle Graph::AddNode(UnaryOp op)
 
 GraphNodeHandle Graph::AddNode(BinaryOp op)
 {
-    Shape shape = GetBroadcastedShape(op.x.shape(), op.y.shape());
+    Shape shape = ComputeBroadcastedShape(op.x.shape(), op.y.shape());
     Shape strides = ComputeStrides(shape);
     return this->AddNode(
         GraphNode
@@ -622,8 +622,13 @@ GraphNodeHandle Graph::AddNode(ReduceOp op)
         });
 }
 
-GraphNodeHandle Graph::AddNode(ViewOp op, Shape shape, Shape strides)
+GraphNodeHandle Graph::AddNode(ViewOp op)
 {
+    if(op.shape.empty())
+        throw std::logic_error("ViewOp has empty shape");
+
+    Shape shape = op.shape;
+    Shape strides = ComputeStrides(op.shape);
     return this->AddNode(
         GraphNode
         {

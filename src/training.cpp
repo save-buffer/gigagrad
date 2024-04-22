@@ -108,16 +108,6 @@ void Differentiate(BackpropCtx &ctx, GraphNodeHandle node, GraphNodeHandle seed)
     node.Visit([&](auto &&x) { Differentiate(ctx, node, x, seed); });
 }
 
-void CodegenBackpropGraph(Graph &graph, BackpropCtx &ctx)
-{
-    std::vector<size_t> node_to_function(graph.nodes.size());
-    for(size_t i = 0; i < ctx.forward.functions.size(); i++)
-    {
-        size_t output_node = ctx.forward.functions[i].node.node_idx;
-        node_to_function[output_node] = i;
-    }
-}
-
 void Train(Graph &graph, const GraphNodeHandle output)
 {
     GraphNodeHandle model_output = graph.AddInput(output.shape());
@@ -132,5 +122,5 @@ void Train(Graph &graph, const GraphNodeHandle output)
     {
         CodegenNode(ctx.program, ctx.gradients[i].gradient);
     }
-    CodegenBackpropGraph(ctx);
+    
 }

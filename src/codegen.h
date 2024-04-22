@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include <cinttypes>
 #include <cstdio>
 #include <numeric>
 #include <unordered_map>
@@ -18,7 +18,7 @@ struct LoadIntImmediateInsn
 
     void Print(size_t iinsn)
     {
-        std::printf("v%zu = %lld\n", iinsn, (long long)value);
+        std::printf("v%zu = %" PRIi64 "\n", iinsn, value);
     }
 };
 
@@ -160,8 +160,10 @@ using Instruction = std::variant<
 
 struct FunctionBuilder
 {
-    explicit FunctionBuilder(const Shape &shape)
+    explicit FunctionBuilder(GraphNodeHandle node)
+        : node(node)
     {
+        const Shape &shape = node.shape();
         this->output_size = std::accumulate(
             shape.begin(),
             shape.end(),
@@ -243,11 +245,12 @@ struct FunctionBuilder
         }
     }
 
+    GraphNodeHandle node; // Node that represents the output of the function
+    size_t output_size;
+
     std::vector<Instruction> insns;
     std::vector<size_t> inputs; // Indices into the buffer inputs
-    size_t output_size;
     size_t output_buffer;
-    GraphNodeHandle node; // Node that represents the output of the function
 };
 
 struct BufferDescriptor
@@ -258,12 +261,11 @@ struct BufferDescriptor
 
 struct Program
 {
-    void PushFunction(FunctionBuilder function, GraphNodeHandle node)
+    void PushFunction(FunctionBuilder function)
     {
         functions.emplace_back(std::move(function));
         functions.back().output_buffer = AddBuffer(functions.size() - 1);
-        functions.back().node = node;
-        node_function_cache[node.node_idx] = functions.size() - 1;
+        node_function_cache[functions.back().node.node_idx] = functions.size() - 1;
     }
 
     size_t NumFunctions()

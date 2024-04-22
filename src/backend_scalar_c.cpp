@@ -19,7 +19,7 @@ struct LowerCtx
 
 static void Lower_ScalarC(LowerCtx &ctx, const LoadIntImmediateInsn &i, size_t iinsn)
 {
-    std::fprintf(ctx.file, "%*sint64_t v%zu = %lld;\n", ctx.indentation, " ", iinsn, (long long)i.value);
+    std::fprintf(ctx.file, "%*sint64_t v%zu = %" PRIi64 ";\n", ctx.indentation, " ", iinsn, i.value);
 }
 
 static void Lower_ScalarC(LowerCtx &ctx, const IntArithmeticInsn &i, size_t iinsn)
