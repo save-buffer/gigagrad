@@ -1,5 +1,5 @@
 # Gigagrad
-A small deep learning library that goes gigafast (not yet though). Gigagrad makes heavy use of C++'s operator overloading to 
+A small deep learning library that goes gigafast (not yet though). Gigagrad makes heavy use of C++'s operator overloading to
 provide an ergonomic way to define neural networks, without all the runtime overhead of Python. Eventually, Gigagrad will be
 able to generate executables or static libraries containing neural networks. Gigagrad's implementation takes inspiration from Tinygrad
 and Pytorch.
