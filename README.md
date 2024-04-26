@@ -1,5 +1,8 @@
 # Gigagrad
-A small deep learning library that goes gigafast (not yet though).
+A small deep learning library that goes gigafast (not yet though). Gigagrad makes heavy use of C++'s operator overloading to 
+provide an ergonomic way to define neural networks, without all the runtime overhead of Python. Eventually, Gigagrad will be
+able to generate executables or static libraries containing neural networks. Gigagrad's implementation takes inspiration from Tinygrad
+and Pytorch.
 
 # Building
 This project uses the [Meson](https://mesonbuild.com/Getting-meson.html) build system. You can 
@@ -45,3 +48,11 @@ From there, you can run tests such as `./gigagrad-test`.
     // Print your learned weight: W = { 0.98, 1.97, 2.96, 3.94 }
     printf("W = { %.2f, %.2f, %.2f, %.2f }\n", w_data[0], w_data[1], w_data[2], w_data[3]);
 ```
+
+# Backends
+- [x] Scalar C (useful for debugging)
+- [ ] OpenMP with SIMD
+- [ ] CUDA
+- [ ] TensTorrent Metallium
+- [ ] Intel OneAPI
+- [ ] Vulkan
