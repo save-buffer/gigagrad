@@ -19,11 +19,12 @@ TEST_CASE("TestTrain", "[Train]")
     x.data() = x_data;
     w.data() = w_data;
     ctx.training_example = training_example_data;
-    for(int i = 0; i < 10; i++)
+    for(int i = 0; i < 20; i++)
     {
         ctx.Execute();
         printf("%.6f\n", ctx.loss[0]);
     }
+    printf("W = { %.2f, %.2f, %.2f, %.2f }\n", w_data[0], w_data[1], w_data[2], w_data[3]);
 }
 
 TEST_CASE("TestXor", "[Graph]")
