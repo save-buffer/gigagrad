@@ -50,6 +50,7 @@ struct GraphNodeHandle
     GraphNodeHandle reshape(dim_t length) const;
     GraphNodeHandle permute(Dims dims) const;
     GraphNodeHandle transpose() const;
+    GraphNodeHandle as_strided(Shape shape, Shape strides, dim_t offset) const;
 
     GraphNodeHandle matmul(GraphNodeHandle y) const;
 
@@ -285,13 +286,14 @@ namespace nn
 
 struct Module
 {
+    GraphNodeHandle Immediate(float imm);
+
     GraphNodeHandle AddInput(Shape shape);
     GraphNodeHandle AddInput(dim_t dim);
 
     GraphNodeHandle AddWeight(Shape shape);
     GraphNodeHandle AddWeight(dim_t dim);
     
-private:
     Graph graph;
     std::vector<size_t> weights; // Indices of forward.inputs that are weights
 };

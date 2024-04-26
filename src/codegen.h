@@ -160,15 +160,19 @@ using Instruction = std::variant<
 
 struct FunctionBuilder
 {
-    explicit FunctionBuilder(GraphNodeHandle node)
+    explicit FunctionBuilder(GraphNodeHandle node, size_t max_seen_size = 1)
         : node(node)
     {
         const Shape &shape = node.shape();
-        this->output_size = std::accumulate(
+        size_t output_size = std::accumulate(
             shape.begin(),
             shape.end(),
             dim_t{1},
             std::multiplies{});
+
+        this->output_size = std::max(
+            max_seen_size,
+            output_size);
     }
 
     size_t Loop(dim_t range, dim_t stride)
@@ -255,7 +259,7 @@ struct FunctionBuilder
 
 struct BufferDescriptor
 {
-    std::variant<const Tensor *, size_t> id; // Either a tensor or a function index
+    std::variant<GraphNodeHandle, size_t> id; // Either a tensor or a function index
     size_t size_elts;
 };
 
@@ -273,22 +277,40 @@ struct Program
         return functions.size();
     }
 
-    size_t AddBuffer(const Tensor &t, size_t size_elts)
+    size_t AddBuffer(GraphNodeHandle t, size_t size_elts)
     {
+        if(t->Kind() != GraphNode::Kind::Tensor)
+            throw std::domain_error("Cannot AddBuffer on non-tensor");
+
         for(size_t iinput = 0; iinput < buffers.size(); iinput++)
-            if(buffers[iinput].id == decltype(BufferDescriptor::id){&t})
-                return iinput;
-        buffers.push_back({ &t, size_elts });
+        {
+            const auto &buff_id = buffers[iinput].id;
+            if(std::holds_alternative<GraphNodeHandle>(buff_id))
+                if(std::get<GraphNodeHandle>(buff_id).node_idx == t.node_idx)
+                    return iinput;
+        }
+        buffers.push_back({ t, size_elts });
         return buffers.size() - 1;
     }
 
     size_t AddBuffer(const size_t fn_idx)
     {
         for(size_t iinput = 0; iinput < buffers.size(); iinput++)
-            if(buffers[iinput].id == decltype(BufferDescriptor::id){fn_idx})
-                return iinput;
+        {
+            const auto &buff_id = buffers[iinput].id;
+            if(std::holds_alternative<size_t>(buff_id))
+                if(std::get<size_t>(buff_id) == fn_idx)
+                    return iinput;
+        }
         buffers.push_back({ fn_idx, functions[fn_idx].output_size });
         return buffers.size() - 1;
+    }
+
+    void ChangeOutputBuffer(size_t fn_idx, size_t new_output_buffer)
+    {
+        if(new_output_buffer >= buffers.size())
+            throw std::domain_error("Invalid output buffer");
+        functions[fn_idx].output_buffer = new_output_buffer;
     }
 
     void Print()
@@ -305,5 +327,9 @@ struct Program
     std::vector<FunctionBuilder> functions;
     std::vector<BufferDescriptor> buffers;
 };
+
+void CodegenNode(codegen::Program &prog, GraphNodeHandle node, std::optional<size_t> output_buffer = std::nullopt);
+codegen::Program CodegenNode(GraphNodeHandle node);
+
 }
 }

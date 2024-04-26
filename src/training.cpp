@@ -1,39 +1,34 @@
 #include "training.h"
+#include "codegen.h"
 
 using namespace gigagrad;
 
-struct BackpropCtx
+struct BackpropContext
 {
-    struct WeightGradients
-    {
-        GraphNodeHandle weight;
-        GraphNodeHandle gradient;
-    };
-
-    std::vector<WeightGradients> gradients;
+    std::vector<std::pair<size_t, GraphNodeHandle>> weight_updates;
     codegen::Program program;
 };
 
-void Differentiate(BackpropCtx &ctx, const GraphNode &t, const GraphNode &seed);
+void Differentiate(BackpropContext &ctx, GraphNodeHandle node, GraphNodeHandle seed);
 
-void Differentiate(BackpropCtx &ctx, GraphNodeHandle node, const Tensor &t, GraphNodeHandle seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const Tensor &t, GraphNodeHandle seed)
 {
-    ctx.gradients.emplace_back({ node, seed });
+    ctx.weight_updates.push_back({ node.node_idx, node - seed });
 }
 
-void Differentiate(BackpropCtx &ctx, GraphNodeHandle, const Immediate &i, const GraphNode &seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle, const Immediate &i, const GraphNodeHandle seed)
 {
     // ∇c = 0, where c is a constant
     return;
 }
 
-void Differentiate(BackpropCtx &ctx, GraphNodeHandle, const UnaryOp &u, const GraphNode &seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const UnaryOp &u, GraphNodeHandle seed)
 {
     switch(u.type)
     {
     case UnaryOpType::EXP:
         // ∇(exp(x)) = { s * exp(x) * ∂x }
-        Differentiate(ctx, u.x, seed * u);
+        Differentiate(ctx, u.x, seed * node);
         break;
     case UnaryOpType::LOG:
         // ∇(log(x)) = { s/x * ∂x }
@@ -48,7 +43,7 @@ void Differentiate(BackpropCtx &ctx, GraphNodeHandle, const UnaryOp &u, const Gr
     }
 }
 
-void Differentiate(BackpropCtx &ctx, GraphNodeHandle, const BinaryOp &b, const GraphNode &seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, GraphNodeHandle seed)
 {
     switch(b.type)
     {
@@ -90,7 +85,7 @@ void Differentiate(BackpropCtx &ctx, GraphNodeHandle, const BinaryOp &b, const G
     }
 }
 
-void Differentiate(BackpropCtx &ctx, GraphNodeHandle, const ReduceOp &r, const GraphNode &seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle, const ReduceOp &r, GraphNodeHandle seed)
 {
     switch(r.type)
     {
@@ -103,24 +98,57 @@ void Differentiate(BackpropCtx &ctx, GraphNodeHandle, const ReduceOp &r, const G
     }
 }
 
-void Differentiate(BackpropCtx &ctx, GraphNodeHandle node, GraphNodeHandle seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle, const ViewOp &v, GraphNodeHandle seed)
 {
-    node.Visit([&](auto &&x) { Differentiate(ctx, node, x, seed); });
+    auto inverse_view = seed.as_strided(v.x.shape(), v.x.strides(), -v.offset);
+    Differentiate(ctx, v.x, inverse_view);
 }
 
-void Train(Graph &graph, const GraphNodeHandle output)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle node, GraphNodeHandle seed)
 {
-    GraphNodeHandle model_output = graph.AddInput(output.shape());
-    GraphNodeHandle training_example = graph.AddInput(output.shape()); 
+    node->Visit([&](auto &&x) { Differentiate(ctx, node, x, seed); });
+}
+
+namespace gigagrad
+{
+
+TrainingContext CompileTrainingGraph(
+    nn::Module &network,
+    GraphNodeHandle model_output,
+    std::unique_ptr<codegen::Backend> backend,
+    float learning_rate)
+{
+    GraphNodeHandle training_example = network.AddInput(model_output.shape()); 
     GraphNodeHandle error = model_output - training_example;
     GraphNodeHandle loss = sum(error % error);
-    GraphNodeHandle seed = graph.Immediate(1.0f);
-    BackpropCtx ctx;
+    GraphNodeHandle seed = network.Immediate(learning_rate);
+    BackpropContext ctx;
     Differentiate(ctx, loss, seed);
     CodegenNode(ctx.program, loss);
-    for(size_t i = 0; i < ctx.gradients.size(); i++)
+    size_t loss_buffer_id = ctx.program.buffers.size() - 1;
+
+    std::unordered_map<size_t, size_t> weights_to_buffers;
+    for(size_t weight : network.weights)
+        weights_to_buffers[weight] = -1;
+    for(size_t ibuffer = 0; ibuffer < ctx.program.buffers.size(); ibuffer++)
     {
-        CodegenNode(ctx.program, ctx.gradients[i].gradient);
+        const codegen::BufferDescriptor &id = ctx.program.buffers[ibuffer];
+        if(std::holds_alternative<GraphNodeHandle>(id.id))
+        {
+            GraphNodeHandle tensor = std::get<GraphNodeHandle>(id.id);
+            if(weights_to_buffers.contains(tensor.node_idx))
+                weights_to_buffers[tensor.node_idx] = ibuffer;
+        }
     }
-    
+    for(size_t i = 0; i < ctx.weight_updates.size(); i++)
+    {
+        size_t weight_idx = ctx.weight_updates[i].first;
+        if(weights_to_buffers.contains(weight_idx))
+            CodegenNode(ctx.program, ctx.weight_updates[i].second, weights_to_buffers[weight_idx]);
+    }
+    backend->LowerProgram(std::move(ctx.program));
+    backend->InitBuffers();
+    float *loss_buffer = static_cast<float *>(backend->GetBuffer(loss_buffer_id));
+    return { loss_buffer, training_example.data(), std::move(backend) };
+}
 }

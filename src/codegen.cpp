@@ -2,6 +2,7 @@
 #include "codegen.h"
 #include "backend.h"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace gigagrad
@@ -9,17 +10,19 @@ namespace gigagrad
 namespace codegen
 {
 
-size_t CodegenNode(Program &prog, FunctionBuilder &f, const GraphNodeHandle node, size_t load_idx);
+size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx, size_t max_seen_size_elts);
 
 size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
     GraphNodeHandle node,
     const Tensor &t,
-    size_t load_idx)
+    size_t load_idx,
+    size_t max_seen_size_elts)
 {
     size_t size_elts = std::accumulate(node.shape().begin(), node.shape().end(), 1, std::multiplies{});
-    size_t buffer_id = prog.AddBuffer(t, size_elts);
+    size_elts = std::max(max_seen_size_elts, size_elts);
+    size_t buffer_id = prog.AddBuffer(node, size_elts);
     auto input = f.Input(buffer_id);
     return f.Load(input, load_idx);
 }
@@ -29,7 +32,8 @@ size_t CodegenNode(
     FunctionBuilder &f,
     GraphNodeHandle,
     const Immediate &i,
-    size_t load_idx)
+    size_t load_idx,
+    size_t max_seen_size_elts)
 {
     return f.Immediate(i.value);
 }
@@ -39,9 +43,10 @@ size_t CodegenNode(
     FunctionBuilder &f,
     GraphNodeHandle,
     const UnaryOp &u,
-    size_t load_idx)
+    size_t load_idx,
+    size_t max_seen_size_elts)
 {
-    auto x = CodegenNode(prog, f, u.x, load_idx);
+    auto x = CodegenNode(prog, f, u.x, load_idx, max_seen_size_elts);
     return f.Unary(u.type, x);
 }
 
@@ -50,7 +55,8 @@ size_t CodegenNode(
     FunctionBuilder &f,
     GraphNodeHandle node,
     const BinaryOp &b,
-    size_t load_idx)
+    size_t load_idx,
+    size_t max_seen_size_elts)
 {
     const Shape &xshape = b.x.shape();
     const Shape &xstrides = b.x.strides();
@@ -79,8 +85,8 @@ size_t CodegenNode(
 
     size_t xload = generate_stride_adjustments(xshape, xstrides);
     size_t yload = generate_stride_adjustments(yshape, ystrides);
-    auto x = CodegenNode(prog, f, b.x, xload);
-    auto y = CodegenNode(prog, f, b.y, yload);
+    auto x = CodegenNode(prog, f, b.x, xload, max_seen_size_elts);
+    auto y = CodegenNode(prog, f, b.y, yload, max_seen_size_elts);
     return f.Binary(b.type, x, y);
 }
 
@@ -89,9 +95,10 @@ size_t CodegenNode(
     FunctionBuilder &old_f,
     GraphNodeHandle node,
     const ReduceOp &r,
-    size_t output_load_idx)
+    size_t output_load_idx,
+    size_t max_seen_size_elts)
 {
-    FunctionBuilder f(node);
+    FunctionBuilder f(node, max_seen_size_elts);
 
     std::vector<size_t> accumulators;
     auto reduce_dim = r.dims.begin(); // dims is sorted
@@ -139,7 +146,7 @@ size_t CodegenNode(
         load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
     }
 
-    auto to_accumulate = CodegenNode(prog, f, r.x, load_idx);
+    auto to_accumulate = CodegenNode(prog, f, r.x, load_idx, 0);
 
     ssize_t iaccum = std::ssize(r.dims) - 1;
     do
@@ -163,7 +170,8 @@ size_t CodegenNode(
     FunctionBuilder &f,
     GraphNodeHandle node,
     const ViewOp &v,
-    size_t load_idx)
+    size_t load_idx,
+    size_t max_seen_size)
 {
     // TODO: This generates a lot of unnecessary crap right now, ideally this arithmetic
     //       expression would get accumulated and simplified before being emitted.
@@ -184,32 +192,41 @@ size_t CodegenNode(
     }
     auto offset = f.IntImmediate(v.offset);
     new_load_idx = f.Arithmetic(new_load_idx, IntArithmeticInsn::Op::ADD, offset);
-    auto x = CodegenNode(prog, f, v.x, new_load_idx);
+    size_t view_size = std::accumulate(
+        v.shape.begin(),
+        v.shape.end(),
+        dim_t{1},
+        std::multiplies{});
+    view_size -= v.offset;
+
+    max_seen_size = std::max(max_seen_size, view_size);
+    auto x = CodegenNode(prog, f, v.x, new_load_idx, max_seen_size);
     return x;
 }
 
-size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx)
+size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx, size_t max_seen_size_elts)
 {
     if(prog.node_function_cache.contains(node.node_idx))
     {
         size_t function_id = prog.node_function_cache[node.node_idx];
         size_t buffer_id = prog.functions[function_id].output_buffer;
+        prog.buffers[buffer_id].size_elts = std::max(prog.buffers[buffer_id].size_elts, max_seen_size_elts);
         auto input = f.Input(buffer_id);
         return f.Load(input, load_idx);
     }
     return node->Visit([&](auto &&x)
     {
-        return CodegenNode(prog, f, node, x, load_idx);
+        return CodegenNode(prog, f, node, x, load_idx, max_seen_size_elts);
     });
 }
 
-void CodegenNode(Program &prog, GraphNodeHandle node)
+void CodegenNode(Program &prog, GraphNodeHandle node, std::optional<size_t> output_buffer)
 {
     // ReduceOp generates its own loops
     if(node->Kind() == GraphNode::Kind::ReduceOp)
     {
         FunctionBuilder f(node);
-        CodegenNode(prog, f, node, 0);
+        CodegenNode(prog, f, node, 0, 0);
     }
     else
     {
@@ -224,13 +241,21 @@ void CodegenNode(Program &prog, GraphNodeHandle node)
             auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
             load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
         }
-        auto to_store = CodegenNode(prog, f, node, load_idx);
+        auto to_store = CodegenNode(prog, f, node, load_idx, 0);
         f.Store(load_idx, to_store);
         for(ssize_t i = 0; i < std::ssize(shape); i++)
             f.EndLoop();
+
         prog.PushFunction(std::move(f));
     }
-}
+    if(output_buffer)
+    {
+        // This can potentially be a little fragile, but it's simple and easy for now.
+        // We rely on the fact that PushFunction always adds a new buffer, so if we want
+        // to remap the last function's output to something else, we can just pop_back().
+        prog.buffers.pop_back();
+        prog.ChangeOutputBuffer(prog.functions.size() - 1, *output_buffer);
+    }
 }
 
 codegen::Program CodegenNode(GraphNodeHandle node)
@@ -240,9 +265,11 @@ codegen::Program CodegenNode(GraphNodeHandle node)
     return result;
 }
 
+}
+
 CompiledTensor GraphNodeHandle::Compile(std::unique_ptr<codegen::Backend> backend) const
 {
-    codegen::Program prog = CodegenNode(*this);
+    codegen::Program prog = codegen::CodegenNode(*this);
     backend->LowerProgram(std::move(prog));
 
     CompiledTensor result;

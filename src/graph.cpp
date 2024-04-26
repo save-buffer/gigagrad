@@ -130,7 +130,6 @@ GraphNodeHandle GraphNodeHandle::max(Dims dims, bool keepdim) const
 
 GraphNodeHandle GraphNodeHandle::reshape(Shape new_shape) const
 {
-    Graph *graph = this->graph;
     Shape input_shape = this->shape();
     auto num_elements = std::accumulate(input_shape.begin(), input_shape.end(), dim_t{1}, std::multiplies{});
     auto num_implicit_dims = std::count(new_shape.begin(), new_shape.end(), -1);
@@ -140,7 +139,7 @@ GraphNodeHandle GraphNodeHandle::reshape(Shape new_shape) const
         if(new_num_elements != num_elements)
             throw std::domain_error("Reshape number of elements doesn't match that of input tensor");
         Shape strides = ComputeStrides(new_shape);
-        return graph->AddNode(ViewOp{*this, std::move(new_shape), std::move(strides), 0});
+        return this->as_strided(std::move(new_shape), std::move(strides), 0);
     }
 
     if(num_implicit_dims > 1)
@@ -162,7 +161,7 @@ GraphNodeHandle GraphNodeHandle::reshape(Shape new_shape) const
             x = remaining_dim;
     
     Shape strides = ComputeStrides(new_shape);
-    return graph->AddNode(ViewOp{*this, std::move(new_shape), std::move(strides), 0});
+    return this->as_strided(std::move(new_shape), std::move(strides), 0);
 }
 
 GraphNodeHandle GraphNodeHandle::reshape(dim_t length) const
@@ -172,7 +171,6 @@ GraphNodeHandle GraphNodeHandle::reshape(dim_t length) const
 
 GraphNodeHandle GraphNodeHandle::permute(Dims dims) const
 {
-    Graph *graph = this->graph;
     Shape shape = this->shape();
     if(dims.size() != shape.size())
         throw std::domain_error("Permute not given proper number of dimensions");
@@ -189,7 +187,7 @@ GraphNodeHandle GraphNodeHandle::permute(Dims dims) const
         new_shape[fixed_dim] = shape[i];
     }
     Shape strides = ComputeStrides(new_shape);
-    return graph->AddNode(ViewOp{*this, std::move(new_shape), std::move(strides), 0});
+    return this->as_strided(std::move(new_shape), std::move(strides), 0);
 }
 
 GraphNodeHandle GraphNodeHandle::transpose() const
@@ -198,6 +196,11 @@ GraphNodeHandle GraphNodeHandle::transpose() const
     Dims dims(shape.size());
     std::iota(std::rbegin(dims), std::rend(dims), 0);
     return this->permute(std::move(dims));
+}
+
+GraphNodeHandle GraphNodeHandle::as_strided(Shape shape, Shape strides, dim_t offset) const
+{
+    return graph->AddNode(ViewOp{*this, std::move(shape), std::move(strides), offset});
 }
 
 // Matmul is a little tricky. We abuse the broadcasting semantics as follows:
@@ -673,6 +676,11 @@ float *&GraphNodeHandle::data()
     if(node.u.k.kind != GraphNode::Kind::Tensor)
         throw std::logic_error("Cannot call data() on non-Tensor node");
     return GetNode().u.t.tensor.data;
+}
+
+GraphNodeHandle nn::Module::Immediate(float imm)
+{
+    return this->graph.Immediate(imm);
 }
 
 GraphNodeHandle nn::Module::AddInput(Shape shape)

@@ -23,10 +23,10 @@ void Eval(gigagrad::codegen::GraphEvalFn fn, std::vector<BufferDescriptor> buffe
     std::vector<void *> buffers = AllocateBuffers(buffer_descs);
     for(size_t ibuff = 0; ibuff < buffer_descs.size(); ibuff++)
     {
-        if(std::holds_alternative<const Tensor *>(buffer_descs[ibuff].id))
+        if(std::holds_alternative<GraphNodeHandle>(buffer_descs[ibuff].id))
         {
-            const Tensor *tensor = std::get<const Tensor *>(buffer_descs[ibuff].id);
-            tensor->load_callback(buffers[ibuff]);
+            GraphNodeHandle tensor = std::get<GraphNodeHandle>(buffer_descs[ibuff].id);
+            tensor->u.t.tensor.load_callback(buffers[ibuff]);
         }
     }
     fn(buffers.data());

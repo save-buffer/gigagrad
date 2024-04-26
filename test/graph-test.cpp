@@ -2,8 +2,29 @@
 #include "src/graph.h"
 #include "src/codegen.h"
 #include "src/backend_scalar_c.h"
+#include "src/training.h"
 
 namespace gg = gigagrad;
+
+TEST_CASE("TestTrain", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(4);
+    auto w = network.AddWeight(4);
+    auto L1 = w - x;
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, L1);
+    float x_data[] = { 1.0, 2.0, 3.0, 4.0 };
+    float w_data[] = { -0.1, 0.1, -0.001, 0.0001 };
+    float training_example_data[] = { 0.0, 0.0, 0.0, 0.0 };
+    x.data() = x_data;
+    w.data() = w_data;
+    ctx.training_example = training_example_data;
+    for(int i = 0; i < 10; i++)
+    {
+        ctx.Execute();
+        printf("%.6f\n", ctx.loss[0]);
+    }
+}
 
 TEST_CASE("TestXor", "[Graph]")
 {

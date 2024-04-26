@@ -44,7 +44,7 @@ static void Lower_ScalarC(LowerCtx &ctx, const EndLoopInsn &i, size_t iinsn)
 static void Lower_ScalarC(LowerCtx &ctx, const LoadInsn &i, size_t iinsn)
 {
     std::fprintf(ctx.file, "%*sfloat v%zu = i%zu[v%zu];\n",
-                ctx.indentation, " ", iinsn, i.input, i.idx);
+                 ctx.indentation, " ", iinsn, i.input, i.idx);
 }
 
 static void Lower_ScalarC(LowerCtx &ctx, const StoreInsn &i, size_t iinsn)
@@ -136,7 +136,7 @@ static void GenerateMain(const Program &program, LowerCtx &ctx)
 
 using GraphEvalFn = BackendScalarC::GraphEvalFn;
 
-static GraphEvalFn CompileAndLoad(const std::filesystem::path &source_path)
+static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path &source_path)
 {
     std::filesystem::path obj_path = source_path;
     obj_path.replace_extension(".so");
@@ -145,11 +145,11 @@ static GraphEvalFn CompileAndLoad(const std::filesystem::path &source_path)
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        " -g -fPIC -shared -lm -march=native -mtune=native";
+        " -O3 -fPIC -shared -lm -march=native -mtune=native";
     std::system(command.c_str());
     // std::printf("Compiling with: %s\n", command.c_str());
 
-    void *handle = dlopen(obj_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+    void *handle = dlopen(obj_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if(!handle)
         throw std::runtime_error(dlerror());
     dlerror(); // Clear error conditions
@@ -162,10 +162,10 @@ static GraphEvalFn CompileAndLoad(const std::filesystem::path &source_path)
         else
             throw std::runtime_error(err);
     }
-    return main_fn;
+    return { main_fn, handle };
 }
 
-static GraphEvalFn Lower_ScalarC(const char *prefix, const Program &program)
+static std::pair<GraphEvalFn, void *> Lower_ScalarC(const char *prefix, const Program &program)
 {
     auto file_name = std::filesystem::temp_directory_path() / prefix;
     file_name += ".c";
@@ -186,10 +186,25 @@ static GraphEvalFn Lower_ScalarC(const char *prefix, const Program &program)
     return CompileAndLoad(file_name);
 }
 
+BackendScalarC::~BackendScalarC()
+{
+    dlclose(this->handle);
+    for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
+    {
+        auto &desc = this->program.buffers[ibuff];
+        if(!std::holds_alternative<GraphNodeHandle>(desc.id))
+        {
+            delete [] reinterpret_cast<float *>(this->buffers[ibuff]);
+        }
+    }
+}
+
 void BackendScalarC::LowerProgram(Program &&program)
 {
     this->program = std::move(program);
-    this->eval_fn = Lower_ScalarC("gg_scalar", this->program);
+    auto [eval_fn, handle] = Lower_ScalarC("gg_scalar", this->program);
+    this->eval_fn = eval_fn;
+    this->handle = handle;
 }
 
 void *BackendScalarC::InitBuffers()
@@ -198,10 +213,10 @@ void *BackendScalarC::InitBuffers()
     for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
     {
         auto &desc = this->program.buffers[ibuff];
-        if(std::holds_alternative<const Tensor *>(desc.id))
+        if(std::holds_alternative<GraphNodeHandle>(desc.id))
         {
-            const Tensor *tensor = std::get<const Tensor *>(desc.id);
-            this->buffers.push_back(reinterpret_cast<void *>(tensor->data));
+            GraphNodeHandle tensor = std::get<GraphNodeHandle>(desc.id);
+            this->buffers.push_back(reinterpret_cast<void *>(tensor.data()));
         }
         else
         {
@@ -212,17 +227,21 @@ void *BackendScalarC::InitBuffers()
     return this->buffers[this->program.functions.back().output_buffer];
 }
 
+void *BackendScalarC::GetBuffer(size_t idx)
+{
+    return this->buffers.at(idx);
+}
+
 void BackendScalarC::Execute()
 {
     for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
     {
         auto &desc = this->program.buffers[ibuff];
-        if(std::holds_alternative<const Tensor *>(desc.id))
+        if(std::holds_alternative<GraphNodeHandle>(desc.id))
         {
-            const Tensor *tensor = std::get<const Tensor *>(desc.id);
-            this->buffers[ibuff] = (reinterpret_cast<void *>(tensor->data));
+            GraphNodeHandle tensor = std::get<GraphNodeHandle>(desc.id);
+            this->buffers[ibuff] = (reinterpret_cast<void *>(tensor.data()));
         }
     }
     eval_fn(this->buffers.data());
 }
-
