@@ -13,6 +13,12 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, GraphNodeHandle s
 
 void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const Tensor &t, GraphNodeHandle seed)
 {
+    if(seed.shape().size() > node.shape().size())
+    {
+        Dims dims(seed.shape().size() - node.shape().size());
+        std::iota(dims.begin(), dims.end(), 0);
+        seed = seed.sum(std::move(dims));
+    }
     ctx.weight_updates.push_back({ node.node_idx, node - seed });
 }
 
@@ -35,7 +41,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const UnaryOp &u,
         Differentiate(ctx, u.x, seed / u.x);
         break;
     case UnaryOpType::SIN:
-        // ∇(sin(x)) = { s * cos(x)∂x }
+        // ∇(sin(x)) = { s * cos(x) * ∂x }
         Differentiate(ctx, u.x, cos(u.x) * seed);
         break;
     default:
@@ -58,14 +64,14 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
         Differentiate(ctx, -b.y, seed);
         break;
     case BinaryOpType::MUL:
-        // ∇(x * y) = { ys * ∂x, xs * ∂y }
+        // ∇(x * y) = { s * y * ∂x, s * x * ∂y }
         Differentiate(ctx, b.x, b.y * seed);
         Differentiate(ctx, b.y, b.x * seed);
         break;
     case BinaryOpType::DIV:
-        // ∇(x / y) = { s/y * ∂x, -s*x/(∂y)^2 }
+        // ∇(x / y) = { s/y * ∂x, -s*x/y^2 * ∂y }
         Differentiate(ctx, b.x, seed / b.y);
-        Differentiate(ctx, b.y * b.y, -seed * b.x);
+        Differentiate(ctx, b.y, -seed * b.x / (b.y * b.y));
         break;
     case BinaryOpType::POW:
         // ∇(x^y) = { syx^(y - 1) * ∂x, s * log(x) * x^y * ∂y }
@@ -85,8 +91,31 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
     }
 }
 
-void Differentiate(BackpropContext &ctx, GraphNodeHandle, const ReduceOp &r, GraphNodeHandle seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ReduceOp &r, GraphNodeHandle seed)
 {
+    // Reinsert 1's if we don't have keepdim so that broadcasting semantics work
+    if(!r.keepdim)
+    {
+        Shape shape(r.x.shape().size());
+        std::copy(seed.shape().begin(), seed.shape().end(), shape.begin());
+        auto idim = r.dims.rbegin();
+        ssize_t offset = r.dims.size();
+        for(ssize_t ishape = std::ssize(shape) - 1; ishape >= 0; ishape--)
+        {
+            if(offset != 0 && ishape == *idim)
+            {
+                shape[ishape] = 1;
+                idim++;
+                offset -= 1;
+            }
+            else
+            {
+                shape[ishape] = shape[ishape - offset];
+            }
+        }
+        seed = seed.reshape(std::move(shape));
+    }
+
     switch(r.type)
     {
     case ReduceOpType::SUM:
@@ -120,7 +149,7 @@ TrainingContext CompileTrainingGraph(
 {
     GraphNodeHandle training_example = network.AddInput(model_output.shape()); 
     GraphNodeHandle error = model_output - training_example;
-    GraphNodeHandle loss = sum(error % error);
+    GraphNodeHandle loss = sum(error.swapaxes(-1, -2) % error);
     GraphNodeHandle seed = network.Immediate(learning_rate);
     BackpropContext ctx;
     Differentiate(ctx, loss, seed);
@@ -148,6 +177,7 @@ TrainingContext CompileTrainingGraph(
     }
     backend->LowerProgram(std::move(ctx.program));
     backend->InitBuffers();
+
     float *loss_buffer = static_cast<float *>(backend->GetBuffer(loss_buffer_id));
     return { loss_buffer, training_example.data(), std::move(backend) };
 }

@@ -59,32 +59,29 @@ size_t CodegenNode(
     size_t max_seen_size_elts)
 {
     const Shape &xshape = b.x.shape();
-    const Shape &xstrides = b.x.strides();
     const Shape &yshape = b.y.shape();
-    const Shape &ystrides = b.y.strides();
     const Shape &broadcasted_shape = node.shape();
+    const Shape &broadcasted_strides = node.strides();
 
     auto generate_stride_adjustments =
-        [&f, &broadcasted_shape, load_idx](const Shape &shape, const Shape &strides)
+        [&f, &broadcasted_shape, &broadcasted_strides, load_idx](const Shape &shape)
         {
             auto load = load_idx;
             for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
             {
                 if(broadcasted_shape[i] != 1 && shape[i] == 1)
                 {
-                    auto stride = f.IntImmediate(strides[i]);
-                    auto broadcasted = f.IntImmediate(broadcasted_shape[i]);
+                    auto stride = f.IntImmediate(broadcasted_strides[i]);
                     auto div = f.Arithmetic(load, IntArithmeticInsn::Op::DIV, stride);
-                    auto mod = f.Arithmetic(div, IntArithmeticInsn::Op::MOD, broadcasted);
-                    auto mul = f.Arithmetic(mod, IntArithmeticInsn::Op::MUL, stride);
+                    auto mul = f.Arithmetic(div, IntArithmeticInsn::Op::MUL, stride);
                     load = f.Arithmetic(load, IntArithmeticInsn::Op::SUB, mul);
                 }
             }
             return load;
         };
 
-    size_t xload = generate_stride_adjustments(xshape, xstrides);
-    size_t yload = generate_stride_adjustments(yshape, ystrides);
+    size_t xload = generate_stride_adjustments(xshape);
+    size_t yload = generate_stride_adjustments(yshape);
     auto x = CodegenNode(prog, f, b.x, xload, max_seen_size_elts);
     auto y = CodegenNode(prog, f, b.y, yload, max_seen_size_elts);
     return f.Binary(b.type, x, y);

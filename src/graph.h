@@ -49,6 +49,7 @@ struct GraphNodeHandle
     GraphNodeHandle reshape(Shape shape) const;
     GraphNodeHandle reshape(dim_t length) const;
     GraphNodeHandle permute(Dims dims) const;
+    GraphNodeHandle swapaxes(dim_t axis1, dim_t axis2) const;
     GraphNodeHandle transpose() const;
     GraphNodeHandle as_strided(Shape shape, Shape strides, dim_t offset) const;
 

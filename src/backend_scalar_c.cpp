@@ -123,6 +123,7 @@ static void Lower_ScalarC(LowerCtx &ctx, const FunctionBuilder &fn, size_t ifn)
 static void GenerateMain(const Program &program, LowerCtx &ctx)
 {
     std::fprintf(ctx.file, "void gigagrad_main(void **buffers)\n{\n");
+    std::fprintf(ctx.file, "    feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);\n");
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
     {
         const FunctionBuilder &fn = program.functions[ifn];
@@ -145,7 +146,7 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        " -O3 -fPIC -shared -lm -march=native -mtune=native";
+        " -Ofast -fPIC -shared -lm -march=native -mtune=native";
     std::system(command.c_str());
     // std::printf("Compiling with: %s\n", command.c_str());
 
@@ -176,6 +177,7 @@ static std::pair<GraphEvalFn, void *> Lower_ScalarC(const char *prefix, const Pr
 
     LowerCtx ctx = { prefix, file, 0 };
 
+    std::fprintf(file, "#define _GNU_SOURCE\n#include <fenv.h>\n");
     std::fprintf(file, "#include <stdint.h>\n#include <math.h>\n\n");
 
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)

@@ -22,7 +22,7 @@ TEST_CASE("TestTrain", "[Train]")
     for(int i = 0; i < 20; i++)
     {
         ctx.Execute();
-        printf("%.6f\n", ctx.loss[0]);
+        printf("%.6f\n", *ctx.loss);
     }
     printf("W = { %.2f, %.2f, %.2f, %.2f }\n", w_data[0], w_data[1], w_data[2], w_data[3]);
 }

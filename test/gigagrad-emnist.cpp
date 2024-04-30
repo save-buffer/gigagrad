@@ -1,9 +1,13 @@
 #include "src/training.h"
+#include "src/backend_scalar_c.h"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
+#include <random>
 
 namespace gg = gigagrad;
+
+constexpr gg::dim_t BatchSize = 128;
 
 // Download dataset from
 // https://www.nist.gov/itl/products-and-services/emnist-dataset
@@ -139,34 +143,34 @@ ParsedDataFile LoadDataFile(const char *filename)
 }
 
 template <typename T>
-std::vector<float> CastToFloat(const std::vector<uint8_t> &input)
+std::vector<float> CastToFloatAndNormalize(const std::vector<uint8_t> &input)
 {
     size_t num_elements = input.size() / sizeof(T);
     std::vector<float> result(num_elements);
     const T *input_data = reinterpret_cast<const T *>(input.data());
     for(size_t i = 0; i < num_elements; i++)
     {
-        result[i] = static_cast<float>(input_data[i]);
+        result[i] = static_cast<float>(input_data[i]) / 255.0;
     }
     return result;
 }
 
-std::vector<float> CastToFloat(DataType dtype, const std::vector<uint8_t> &input)
+std::vector<float> CastToFloatAndNormalize(DataType dtype, const std::vector<uint8_t> &input)
 {
     switch(dtype)
     {
     case DataType::U8:
-        return CastToFloat<uint8_t>(input);
+        return CastToFloatAndNormalize<uint8_t>(input);
     case DataType::I8:
-        return CastToFloat<int8_t>(input);
+        return CastToFloatAndNormalize<int8_t>(input);
     case DataType::I16:
-        return CastToFloat<int16_t>(input);
+        return CastToFloatAndNormalize<int16_t>(input);
     case DataType::I32:
-        return CastToFloat<int32_t>(input);
+        return CastToFloatAndNormalize<int32_t>(input);
     case DataType::F32:
-        return CastToFloat<float>(input);
+        return CastToFloatAndNormalize<float>(input);
     case DataType::F64:
-        return CastToFloat<double>(input);
+        return CastToFloatAndNormalize<double>(input);
     default:
         exit(1);
     }
@@ -227,9 +231,17 @@ Dataset LoadDataset(const char *directory, const char *dataset)
     std::string label_name = std::string(directory) + "/emnist-mnist-" + dataset + "-labels-idx1-ubyte";
     ParsedDataFile images = LoadDataFile(image_name.c_str());
     ParsedDataFile labels = LoadDataFile(label_name.c_str());
-    std::vector<float> images_float = CastToFloat(images.dtype, images.data);
+    std::vector<float> images_float = CastToFloatAndNormalize(images.dtype, images.data);
     std::vector<float> labels_onehot = ToOneHot(labels.dtype, labels.data);
     return { std::move(images.shape), std::move(images_float), std::move(labels_onehot) };
+}
+
+void InitializeWeights(float *weight, size_t size_elts)
+{
+    std::default_random_engine gen(0);
+    std::uniform_real_distribution<float> dist(-0.01f, 0.01f);
+    for(size_t i = 0; i < size_elts; i++)
+        weight[i] = dist(gen);
 }
 
 int main(int argc, const char **argv)
@@ -242,23 +254,38 @@ int main(int argc, const char **argv)
 
     Dataset train = LoadDataset(argv[1], "train");
 
-    gg::Graph graph;
-    auto x = graph.AddInput({ 28 * 28, 1 });
-    auto w1 = graph.AddInput({ 800, 28 * 28 });
-    auto b1 = graph.AddInput({ 800, 1 });
+    gg::nn::Module network;
+    auto x = network.AddInput({ BatchSize, 28 * 28, 1 });
+    auto w1 = network.AddWeight({ 800, 28 * 28 });
+    auto b1 = network.AddWeight({ 800, 1 });
     auto z1 = (w1 % x) + b1;
     auto a2 = gg::sigmoid(z1);
-    auto w2 = graph.AddInput({ 10, 800 });
-    auto b2 = graph.AddInput({ 10, 1 });
+    auto w2 = network.AddWeight({ 10, 800 });
+    auto b2 = network.AddWeight({ 10, 1 });
     auto z2 = (w2 % a2) + b2;
     auto result = gg::sigmoid(z2);
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result);
 
-/*
-    gg::Trainer trainer;
-    trainer
-        .Target(result, train.labels.data())
-        .TrainingData(x, train.inputs.data())
-        .NumTrainingPoints(train.shape[0]);
-*/
+    w1.data() = new float[800 * 28 * 28];
+    b1.data() = new float[800 * 1];
+    w2.data() = new float[10 * 800];
+    b2.data() = new float[10 * 1];
+    InitializeWeights(w1.data(), 800 * 28 * 28);
+    InitializeWeights(b1.data(), 800 * 1);
+    InitializeWeights(w2.data(), 10 * 800);
+    InitializeWeights(b2.data(), 10 * 1);
+
+    size_t num_batches = (train.shape[0] + BatchSize - 1) / BatchSize;
+    for(size_t iepoch = 0; iepoch < 4; iepoch++)
+    {
+        for(size_t ibatch = 0; ibatch < num_batches; ibatch++)
+        {
+            x.data() = &train.inputs[BatchSize * 28 * 28 * ibatch];
+            ctx.training_example = &train.labels[BatchSize * 10 * ibatch];
+            ctx.Execute();
+            printf("Epoch %zu Batch (%zu / %zu) loss: %.6f\n", iepoch, ibatch, num_batches, *ctx.loss);
+        }
+        printf("Epoch %zu loss: %.6f\n", iepoch, *ctx.loss);
+    }
     return 0;
 }

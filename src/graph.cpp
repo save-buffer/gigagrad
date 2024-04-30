@@ -169,6 +169,16 @@ GraphNodeHandle GraphNodeHandle::reshape(dim_t length) const
     return this->reshape(Shape{length});
 }
 
+GraphNodeHandle GraphNodeHandle::swapaxes(dim_t axis1, dim_t axis2) const
+{
+    Shape shape = this->shape();
+    axis1 = FixDim(axis1, shape.size());
+    axis2 = FixDim(axis2, shape.size());
+    std::swap(shape[axis1], shape[axis2]);
+    Shape strides = ComputeStrides(shape);
+    return this->as_strided(std::move(shape), std::move(strides), 0);
+}
+
 GraphNodeHandle GraphNodeHandle::permute(Dims dims) const
 {
     Shape shape = this->shape();
@@ -255,12 +265,13 @@ GraphNodeHandle cos(GraphNodeHandle x)
 
 GraphNodeHandle sigmoid(GraphNodeHandle x)
 {
-    return 1.0 / (1.0 + exp(-x));
+    GraphNodeHandle expx = exp(x);
+    return expx / (1 + expx);
 }
 
 GraphNodeHandle operator-(GraphNodeHandle x)
 {
-    return -1 * x;
+    return 0 - x;
 }
 
 GraphNodeHandle operator+(GraphNodeHandle x, GraphNodeHandle y)
