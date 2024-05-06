@@ -53,6 +53,9 @@ struct GraphNodeHandle
     GraphNodeHandle transpose() const;
     GraphNodeHandle as_strided(Shape shape, Shape strides, dim_t offset) const;
 
+    GraphNodeHandle relu() const;
+    GraphNodeHandle softmax(dim_t axis = -1) const;
+
     GraphNodeHandle matmul(GraphNodeHandle y) const;
 
     const Shape &shape() const; // Empty shape means scalar
@@ -246,6 +249,9 @@ GraphNodeHandle pow(GraphNodeHandle x, float y);
 GraphNodeHandle pow(float x, GraphNodeHandle y);
 GraphNodeHandle pow(GraphNodeHandle x, GraphNodeHandle y);
 
+GraphNodeHandle relu(GraphNodeHandle x);
+GraphNodeHandle softmax(GraphNodeHandle x, dim_t axis = -1);
+
 GraphNodeHandle sum(GraphNodeHandle x, bool keepdim = false);
 GraphNodeHandle sum(GraphNodeHandle x, dim_t axis, bool keepdim = false);
 GraphNodeHandle sum(GraphNodeHandle x, Dims dims, bool keepdim = false);
@@ -296,6 +302,8 @@ struct Module
     GraphNodeHandle AddWeight(dim_t dim);
     
     Graph graph;
+    // TODO: Think about if this is a good idea..
+    // kind of cumbersome doing a double lookup
     std::vector<size_t> weights; // Indices of forward.inputs that are weights
 };
 

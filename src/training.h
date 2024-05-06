@@ -15,6 +15,7 @@ struct TrainingContext
     void Execute() { backend->Execute(); }
 };
 
+// TODO: Allow dynamic learning rate
 TrainingContext CompileTrainingGraph(
     nn::Module &network,
     GraphNodeHandle model_output,
@@ -24,7 +25,7 @@ TrainingContext CompileTrainingGraph(
 template <typename TBackend>
 TrainingContext CompileTrainingGraph(nn::Module &network, GraphNodeHandle model_output, float learning_rate = 0.1f)
 {
-    return CompileTrainingGraph(network, model_output, std::make_unique<TBackend>());
+    return CompileTrainingGraph(network, model_output, std::make_unique<TBackend>(), learning_rate);
 }
 
 }

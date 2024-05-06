@@ -213,6 +213,16 @@ GraphNodeHandle GraphNodeHandle::as_strided(Shape shape, Shape strides, dim_t of
     return graph->AddNode(ViewOp{*this, std::move(shape), std::move(strides), offset});
 }
 
+GraphNodeHandle GraphNodeHandle::relu() const
+{
+    return gigagrad::relu(GraphNodeHandle{*this});
+}
+
+GraphNodeHandle GraphNodeHandle::softmax(dim_t axis) const
+{
+    return gigagrad::softmax(GraphNodeHandle{*this}, axis);
+}
+
 // Matmul is a little tricky. We abuse the broadcasting semantics as follows:
 // If we have matrices X, Y of shape AxB and BxC, then we reshape X into a
 // AxBx1 tensor, and reshape Y into a 1xBxC matrix. Broadcasting then turns this
@@ -487,6 +497,19 @@ GraphNodeHandle pow(GraphNodeHandle x, GraphNodeHandle y)
 {
     Graph *graph = x.graph;
     return graph->AddNode(BinaryOp{BinaryOpType::POW, x, y});
+}
+
+GraphNodeHandle relu(GraphNodeHandle x)
+{
+    return max(x, 0.0f);
+}
+
+GraphNodeHandle softmax(GraphNodeHandle x, dim_t axis)
+{
+    GraphNodeHandle m = x.max(axis, true);
+    GraphNodeHandle exp_shifted = exp(x - m);
+    GraphNodeHandle sum_exp_shifted = exp_shifted.sum(axis, true);
+    return exp_shifted / sum_exp_shifted;
 }
 
 GraphNodeHandle sum(GraphNodeHandle x, dim_t axis, bool keepdim)

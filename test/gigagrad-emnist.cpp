@@ -239,7 +239,7 @@ Dataset LoadDataset(const char *directory, const char *dataset)
 void InitializeWeights(float *weight, size_t size_elts)
 {
     std::default_random_engine gen(0);
-    std::uniform_real_distribution<float> dist(-0.01f, 0.01f);
+    std::uniform_real_distribution<float> dist(-0.1f, 0.1f);
     for(size_t i = 0; i < size_elts; i++)
         weight[i] = dist(gen);
 }
@@ -256,14 +256,14 @@ int main(int argc, const char **argv)
 
     gg::nn::Module network;
     auto x = network.AddInput({ BatchSize, 28 * 28, 1 });
-    auto w1 = network.AddWeight({ 800, 28 * 28 });
-    auto b1 = network.AddWeight({ 800, 1 });
+    auto w1 = network.AddWeight({ 40, 28 * 28 });
+    auto b1 = network.AddWeight({ 40, 1 });
     auto z1 = (w1 % x) + b1;
-    auto a2 = gg::sigmoid(z1);
-    auto w2 = network.AddWeight({ 10, 800 });
+    auto a2 = z1.relu();
+    auto w2 = network.AddWeight({ 10, 40 });
     auto b2 = network.AddWeight({ 10, 1 });
     auto z2 = (w2 % a2) + b2;
-    auto result = gg::sigmoid(z2);
+    auto result = z2.softmax(-2);
     gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result);
 
     w1.data() = new float[800 * 28 * 28];

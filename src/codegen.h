@@ -189,8 +189,15 @@ struct FunctionBuilder
 
     size_t Input(size_t program_input_idx)
     {
-        inputs.push_back(program_input_idx);
-        return inputs.size() - 1;
+        // TODO: Make this not O(n), probably using unordered_map from buffer index
+        //       to input index
+        auto input = std::find(inputs.begin(), inputs.end(), program_input_idx);
+        if(input == inputs.end())
+        {
+            inputs.push_back(program_input_idx);
+            return inputs.size() - 1;
+        }
+        return input - inputs.begin();
     }
 
     size_t Load(size_t input_idx, size_t load_idx)
@@ -253,7 +260,7 @@ struct FunctionBuilder
     size_t output_size;
 
     std::vector<Instruction> insns;
-    std::vector<size_t> inputs; // Indices into the buffer inputs
+    std::vector<size_t> inputs; // Indices into the program inputs
     size_t output_buffer;
 };
 
@@ -304,6 +311,12 @@ struct Program
         }
         buffers.push_back({ fn_idx, functions[fn_idx].output_size });
         return buffers.size() - 1;
+    }
+
+    size_t GetOutputBufferForNodeIdx(size_t node_id)
+    {
+        size_t function_id = node_function_cache[node_id];
+        return functions[function_id].output_buffer;
     }
 
     void ChangeOutputBuffer(size_t fn_idx, size_t new_output_buffer)

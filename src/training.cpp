@@ -3,9 +3,17 @@
 
 using namespace gigagrad;
 
+struct Gradient
+{
+    GraphNodeHandle input;
+    GraphNodeHandle gradient;
+};
+
 struct BackpropContext
 {
-    std::vector<std::pair<size_t, GraphNodeHandle>> weight_updates;
+    // Note: `gradients` contains gradients for all Tensors, not just weights.
+    // Additional filtering is needed based on `first`.
+    std::vector<Gradient> gradients;
     codegen::Program program;
 };
 
@@ -13,13 +21,14 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, GraphNodeHandle s
 
 void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const Tensor &t, GraphNodeHandle seed)
 {
+    // If we're performing batched training
     if(seed.shape().size() > node.shape().size())
     {
         Dims dims(seed.shape().size() - node.shape().size());
         std::iota(dims.begin(), dims.end(), 0);
         seed = seed.sum(std::move(dims));
     }
-    ctx.weight_updates.push_back({ node.node_idx, node - seed });
+    ctx.gradients.push_back({ node, seed });
 }
 
 void Differentiate(BackpropContext &ctx, GraphNodeHandle, const Immediate &i, const GraphNodeHandle seed)
@@ -42,7 +51,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const UnaryOp &u,
         break;
     case UnaryOpType::SIN:
         // ∇(sin(x)) = { s * cos(x) * ∂x }
-        Differentiate(ctx, u.x, cos(u.x) * seed);
+        Differentiate(ctx, u.x, seed * cos(u.x));
         break;
     default:
         throw std::runtime_error("Unimplemented operation");
@@ -54,19 +63,19 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
     switch(b.type)
     {
     case BinaryOpType::ADD:
-        // ∇(x + y) = { ∂x, ∂y }
+        // ∇(x + y) = { s * ∂x, s * ∂y }
         Differentiate(ctx, b.x, seed);
         Differentiate(ctx, b.y, seed);
         break;
     case BinaryOpType::SUB:
-        // ∇(x - y) = { ∂x, -∂y }
+        // ∇(x - y) = { s * ∂x, s * -∂y }
         Differentiate(ctx, b.x, seed);
         Differentiate(ctx, -b.y, seed);
         break;
     case BinaryOpType::MUL:
         // ∇(x * y) = { s * y * ∂x, s * x * ∂y }
-        Differentiate(ctx, b.x, b.y * seed);
-        Differentiate(ctx, b.y, b.x * seed);
+        Differentiate(ctx, b.x, seed * b.y);
+        Differentiate(ctx, b.y, seed * b.x);
         break;
     case BinaryOpType::DIV:
         // ∇(x / y) = { s/y * ∂x, -s*x/y^2 * ∂y }
@@ -76,7 +85,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
     case BinaryOpType::POW:
         // ∇(x^y) = { syx^(y - 1) * ∂x, s * log(x) * x^y * ∂y }
         Differentiate(ctx, b.x, seed * b.y * pow(b.x, b.y - 1));
-        Differentiate(ctx, b.y, log(b.x) * pow(b.x, b.y));
+        Differentiate(ctx, b.y, seed * log(b.x) * pow(b.x, b.y));
         break;
     case BinaryOpType::CMP:
         // ∇(x == y) = { s * (x == y ? 1 : 0), s * (a == b ? 1 : 0) }
@@ -122,8 +131,9 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ReduceOp &r
         Differentiate(ctx, r.x, seed);
         break;
     case ReduceOpType::MAX:
-        // TODO: Support this once we have argmax
-        throw std::runtime_error("Gradients involving Max reduction not implemented");
+        // ∇(max(x)) = { s * (x == max(x)) * ∂x }
+        Differentiate(ctx, r.x, seed * (r.x == node));
+        break;
     }
 }
 
@@ -158,7 +168,10 @@ TrainingContext CompileTrainingGraph(
 
     std::unordered_map<size_t, size_t> weights_to_buffers;
     for(size_t weight : network.weights)
-        weights_to_buffers[weight] = -1;
+    {
+        size_t node_idx = network.graph.inputs[weight];
+        weights_to_buffers[node_idx] = -1;
+    }
     for(size_t ibuffer = 0; ibuffer < ctx.program.buffers.size(); ibuffer++)
     {
         const codegen::BufferDescriptor &id = ctx.program.buffers[ibuffer];
@@ -169,11 +182,22 @@ TrainingContext CompileTrainingGraph(
                 weights_to_buffers[tensor.node_idx] = ibuffer;
         }
     }
-    for(size_t i = 0; i < ctx.weight_updates.size(); i++)
+
+    for(size_t i = 0; i < ctx.gradients.size(); i++)
     {
-        size_t weight_idx = ctx.weight_updates[i].first;
+        size_t weight_idx = ctx.gradients[i].input.node_idx;
         if(weights_to_buffers.contains(weight_idx))
-            CodegenNode(ctx.program, ctx.weight_updates[i].second, weights_to_buffers[weight_idx]);
+            CodegenNode(ctx.program, ctx.gradients[i].gradient);
+    }
+    for(size_t i = 0; i < ctx.gradients.size(); i++)
+    {
+        size_t weight_idx = ctx.gradients[i].input.node_idx;
+        if(weights_to_buffers.contains(weight_idx))
+        {
+            size_t gradient_buffer_idx = weights_to_buffers[weight_idx];
+            auto [weight, gradient] = ctx.gradients[i];
+            CodegenNode(ctx.program, (weight - gradient), gradient_buffer_idx);
+        }
     }
     backend->LowerProgram(std::move(ctx.program));
     backend->InitBuffers();

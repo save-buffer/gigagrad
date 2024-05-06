@@ -4,9 +4,59 @@
 #include "src/backend_scalar_c.h"
 #include "src/training.h"
 
+#include <cmath>
+
 namespace gg = gigagrad;
 
-TEST_CASE("TestTrain", "[Train]")
+void TestUnary(gg::nn::Module &network, gg::GraphNodeHandle w, gg::GraphNodeHandle result, float expected)
+{
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result, 1.0);
+    float example = 0.0f;
+    ctx.training_example = &example;
+    ctx.Execute();
+    REQUIRE(*w.data() == expected);
+}
+
+TEST_CASE("TestGradients_EXP", "[Train]")
+{
+    gg::nn::Module network;
+    auto w = network.AddWeight(1);
+    auto result = exp(w);
+    float w_data = 0.0f;
+    w.data() = &w_data;
+    // ∂/∂w (E - exp(w))^2 = 2(E - exp(w)) * ∂/∂w(E - exp(w)) = 2(E - exp(w)) * -exp(w)
+    // If E = 0, above equals 2exp(2w). If w = 0, above equals 2. So after gradient update,
+    // w should be 0 - 2 = -2.
+    TestUnary(network, w, result, -2.0f);
+}
+
+TEST_CASE("TestGradients_LOG", "[Train]")
+{
+    gg::nn::Module network;
+    auto w = network.AddWeight(1);
+    auto result = log(w);
+    float w_data = 1.0f;
+    w.data() = &w_data;
+    // ∂/∂w (E - log(w))^2 = 2(E - log(w)) * ∂/∂w(E - log(w)) = 2(E - log(w)) * -1/w
+    // If E = 0, above equals log(w)/w. If w = 1, above equals 0. So after gradient update,
+    // w should be 1 - 0 = 1.
+    TestUnary(network, w, result, 1.0f);
+}
+
+TEST_CASE("TestGradients_SIN", "[Train]")
+{
+    gg::nn::Module network;
+    auto w = network.AddWeight(1);
+    auto result = sin(w);
+    float w_data = 0.0f;
+    w.data() = &w_data;
+    // ∂/∂w (E - sin(w))^2 = 2(E - sin(w)) * ∂/∂w(E - sin(w)) = 2(E - sin(w)) * -cos(w)
+    // If E = 0, above equals 2sin(w)cos(w). If w = 0, above equals 0. So after gradient update,
+    // w should be 0 - 0 = 0.
+    TestUnary(network, w, result, 0.0f);
+}
+
+TEST_CASE("TestTrainSimple", "[Train]")
 {
     gg::nn::Module network;
     auto x = network.AddInput(4);
@@ -19,15 +69,20 @@ TEST_CASE("TestTrain", "[Train]")
     x.data() = x_data;
     w.data() = w_data;
     ctx.training_example = training_example_data;
-    for(int i = 0; i < 20; i++)
+    float prev_loss = 1000;
+    for(int i = 0; i < 50; i++)
     {
         ctx.Execute();
-        printf("%.6f\n", *ctx.loss);
+        REQUIRE(*ctx.loss < prev_loss);
     }
-    printf("W = { %.2f, %.2f, %.2f, %.2f }\n", w_data[0], w_data[1], w_data[2], w_data[3]);
+    for(int i = 0; i < 4; i++)
+    {
+        float pct_diff = (std::abs(w_data[i] - x_data[i]) / x_data[i]) * 100.0f;
+        REQUIRE(pct_diff < 1);
+    }
 }
 
-TEST_CASE("TestXor", "[Graph]")
+TEST_CASE("TestXor", "[Codegen]")
 {
     gg::Graph graph;
     auto x = graph.AddInput(2);
@@ -64,7 +119,7 @@ TEST_CASE("TestXor", "[Graph]")
     }
 }
 
-TEST_CASE("TestLogisticRegression", "[Graph]")
+TEST_CASE("TestLogisticRegressionShape", "[Graph]")
 {
     gg::Graph graph;
     auto x = graph.AddInput({ 28, 28 }).reshape({ 28 * 28, 1 });
@@ -75,10 +130,17 @@ TEST_CASE("TestLogisticRegression", "[Graph]")
     auto w2 = graph.AddInput({ 10, 800 });
     auto b2 = graph.AddInput({ 10, 1 });
     auto result = (w2 % a2) + b2;
+    REQUIRE(x.shape() == gg::Shape{28 * 28, 1});
+    REQUIRE(w1.shape() == gg::Shape{800, 28 * 28});
+    REQUIRE(b1.shape() == gg::Shape{800, 1});
+    REQUIRE(z1.shape() == gg::Shape{800, 1});
+    REQUIRE(a2.shape() == gg::Shape{800, 1});
+    REQUIRE(w2.shape() == gg::Shape{10, 800});
+    REQUIRE(b2.shape() == gg::Shape{10, 1});
     REQUIRE(result.shape() == gg::Shape{10, 1});
 }
 
-TEST_CASE("TestCreateGraph", "[Graph]")
+TEST_CASE("TestSimpleGraphShape", "[Graph]")
 {
     gigagrad::Graph graph;
     auto tensor1 = graph.AddInput({ 2, 2 });
