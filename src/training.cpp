@@ -53,6 +53,10 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const UnaryOp &u,
         // ∇(sin(x)) = { s * cos(x) * ∂x }
         Differentiate(ctx, u.x, seed * cos(u.x));
         break;
+    case UnaryOpType::SQRT:
+        // ∇(sqrt(x)) = { s * 1/(2 * sqrt(x)) * ∂x }
+        Differentiate(ctx, u.x, seed * 1.0f / (2.0f * node));
+        break;
     default:
         throw std::runtime_error("Unimplemented operation");
     }

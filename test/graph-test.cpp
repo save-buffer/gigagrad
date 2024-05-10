@@ -5,6 +5,7 @@
 #include "src/training.h"
 
 #include <cmath>
+#include <random>
 
 namespace gg = gigagrad;
 
@@ -117,6 +118,60 @@ TEST_CASE("TestXor", "[Codegen]")
             REQUIRE(result.data[0] == expected);
         }
     }
+}
+
+void RandomMatrix(float *m, size_t size_elts)
+{
+    static std::default_random_engine gen(0);
+    std::uniform_real_distribution<float> dist(-2.0f, 2.0f);
+    for(size_t i = 0; i < size_elts; i++)
+        m[i] = dist(gen);
+}
+
+void NaiveMatmul(float *x, float *y, size_t dim, float *result)
+{
+    for(size_t irow = 0; irow < dim; irow++)
+    {
+        float *row = x + dim * irow;
+        for(size_t icol = 0; icol < dim; icol++)
+        {
+            float res = 0.0f;
+
+            float *col = y + icol;
+            for(size_t i = 0; i < dim; i++)
+            {
+                res += row[i] * col[dim * i];
+            }
+            result[dim * irow + icol] = res;
+        }
+    }
+}
+
+TEST_CASE("TestMatmul", "[Codegen]")
+{
+    constexpr size_t dim = 128;
+    gg::Graph graph;
+    auto x = graph.AddInput({ dim, dim });
+    auto y = graph.AddInput({ dim, dim });
+    auto result = (x % y).Compile<gg::codegen::BackendScalarC>();
+    
+    x.data() = new float[dim * dim];
+    y.data() = new float[dim * dim];
+    RandomMatrix(x.data(), dim * dim);
+    RandomMatrix(y.data(), dim * dim);
+
+    result.Execute();
+    auto actual = result.data;
+    auto expected = new float[dim * dim];
+    NaiveMatmul(x.data(), y.data(), dim, expected);
+    for(size_t i = 0; i < dim * dim; i++)
+    {
+        REQUIRE(std::abs(actual[i] - expected[i]) / actual[i] <= 0.02f);
+    }
+    // Make LeakSanitizer happy
+    delete [] x.data();
+    delete [] y.data();
+    delete [] expected;
 }
 
 TEST_CASE("TestLogisticRegressionShape", "[Graph]")

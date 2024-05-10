@@ -62,6 +62,7 @@ static void Lower_ScalarC(LowerCtx &ctx, const UnaryInsn &i, size_t iinsn)
     auto op_str = i.type == UnaryOpType::EXP ? "exp"
         : i.type == UnaryOpType::LOG ? "log"
         : i.type == UnaryOpType::SIN ? "sin"
+        : i.type == UnaryOpType::SQRT ? "sqrtf"
         : "INVALID";
     std::fprintf(ctx.file, "%*sfloat v%zu = %s(v%zu);\n",
                  ctx.indentation, " ", iinsn, op_str, i.x);
@@ -146,7 +147,7 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        " -ggdb -fPIC -shared -lm -march=native -mtune=native";
+        "  -Ofast -fPIC -shared -lm -march=native -mtune=native";
     std::system(command.c_str());
     // std::printf("Compiling with: %s\n", command.c_str());
 

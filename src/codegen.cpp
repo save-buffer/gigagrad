@@ -67,14 +67,15 @@ size_t CodegenNode(
         [&f, &broadcasted_shape, &broadcasted_strides, load_idx](const Shape &shape)
         {
             auto load = load_idx;
-            for(ssize_t i = std::ssize(shape) - 1; i >= 0; i--)
+            for(ssize_t i = 0; i < std::ssize(shape); i++)
             {
                 if(broadcasted_shape[i] != 1 && shape[i] == 1)
                 {
-                    auto stride = f.IntImmediate(broadcasted_strides[i]);
-                    auto div = f.Arithmetic(load, IntArithmeticInsn::Op::DIV, stride);
-                    auto mul = f.Arithmetic(div, IntArithmeticInsn::Op::MUL, stride);
-                    load = f.Arithmetic(load, IntArithmeticInsn::Op::SUB, mul);
+                    auto divisor = f.IntImmediate(broadcasted_strides[i] * broadcasted_shape[i]);
+                    auto modulus = f.IntImmediate(broadcasted_strides[i]);
+                    auto div = f.Arithmetic(load, IntArithmeticInsn::Op::DIV, divisor);
+                    auto mod = f.Arithmetic(load, IntArithmeticInsn::Op::MOD, modulus);
+                    load = f.Arithmetic(div, IntArithmeticInsn::Op::ADD, mod);
                 }
             }
             return load;

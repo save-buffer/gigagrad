@@ -55,6 +55,9 @@ struct GraphNodeHandle
 
     GraphNodeHandle relu() const;
     GraphNodeHandle softmax(dim_t axis = -1) const;
+    GraphNodeHandle mean(dim_t axis = 0, bool keepdim = false) const;
+    GraphNodeHandle variance(dim_t axis = 0, bool keepdim = false) const;
+    GraphNodeHandle batchnorm() const;
 
     GraphNodeHandle matmul(GraphNodeHandle y) const;
 
@@ -81,6 +84,7 @@ enum class UnaryOpType
     LOG,
     CAST,
     SIN,
+    SQRT,
 };
 
 enum class BinaryOpType
@@ -204,6 +208,7 @@ struct GraphNode
     Shape strides;
 };
 
+GraphNodeHandle sqrt(GraphNodeHandle x);
 GraphNodeHandle exp(GraphNodeHandle x);
 GraphNodeHandle log(GraphNodeHandle x);
 GraphNodeHandle sin(GraphNodeHandle x);
@@ -261,6 +266,10 @@ GraphNodeHandle max(GraphNodeHandle x, Dims dims, bool keepdim = false);
 GraphNodeHandle min(GraphNodeHandle x, bool keepdim = false);
 GraphNodeHandle min(GraphNodeHandle x, dim_t axis, bool keepdim = false);
 GraphNodeHandle min(GraphNodeHandle x, Dims dims, bool keepdim = false);
+
+GraphNodeHandle mean(GraphNodeHandle x, dim_t axis, bool keepdim = false);
+GraphNodeHandle variance(GraphNodeHandle x, dim_t axis, bool keepdim = false);
+GraphNodeHandle batchnorm(GraphNodeHandle x);
 
 GraphNodeHandle reshape(GraphNodeHandle x, Shape shape);
 GraphNodeHandle reshape(GraphNodeHandle x, dim_t length);

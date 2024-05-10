@@ -254,25 +254,28 @@ int main(int argc, const char **argv)
 
     Dataset train = LoadDataset(argv[1], "train");
 
+    constexpr size_t HiddenLayerSize = 40;
+
     gg::nn::Module network;
     auto x = network.AddInput({ BatchSize, 28 * 28, 1 });
-    auto w1 = network.AddWeight({ 40, 28 * 28 });
-    auto b1 = network.AddWeight({ 40, 1 });
+    auto w1 = network.AddWeight({ HiddenLayerSize, 28 * 28 });
+    auto b1 = network.AddWeight({ HiddenLayerSize, 1 });
+
     auto z1 = (w1 % x) + b1;
     auto a2 = z1.relu();
-    auto w2 = network.AddWeight({ 10, 40 });
+    auto w2 = network.AddWeight({ 10, HiddenLayerSize });
     auto b2 = network.AddWeight({ 10, 1 });
     auto z2 = (w2 % a2) + b2;
     auto result = z2.softmax(-2);
-    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result);
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result, 0.005f);
 
-    w1.data() = new float[800 * 28 * 28];
-    b1.data() = new float[800 * 1];
-    w2.data() = new float[10 * 800];
+    w1.data() = new float[HiddenLayerSize * 28 * 28];
+    b1.data() = new float[HiddenLayerSize * 1];
+    w2.data() = new float[10 * HiddenLayerSize];
     b2.data() = new float[10 * 1];
-    InitializeWeights(w1.data(), 800 * 28 * 28);
-    InitializeWeights(b1.data(), 800 * 1);
-    InitializeWeights(w2.data(), 10 * 800);
+    InitializeWeights(w1.data(), HiddenLayerSize * 28 * 28);
+    InitializeWeights(b1.data(), HiddenLayerSize * 1);
+    InitializeWeights(w2.data(), 10 * HiddenLayerSize);
     InitializeWeights(b2.data(), 10 * 1);
 
     size_t num_batches = (train.shape[0] + BatchSize - 1) / BatchSize;

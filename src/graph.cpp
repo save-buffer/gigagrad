@@ -223,9 +223,24 @@ GraphNodeHandle GraphNodeHandle::softmax(dim_t axis) const
     return gigagrad::softmax(GraphNodeHandle{*this}, axis);
 }
 
+GraphNodeHandle GraphNodeHandle::mean(dim_t axis, bool keepdim) const
+{
+    return gigagrad::mean(*this, axis, keepdim);
+}
+
+GraphNodeHandle GraphNodeHandle::variance(dim_t axis, bool keepdim) const
+{
+    return gigagrad::variance(*this, axis, keepdim);
+}
+
+GraphNodeHandle GraphNodeHandle::batchnorm() const
+{
+    return gigagrad::batchnorm(*this);
+}
+
 // Matmul is a little tricky. We abuse the broadcasting semantics as follows:
 // If we have matrices X, Y of shape AxB and BxC, then we reshape X into a
-// AxBx1 tensor, and reshape Y into a 1xBxC matrix. Broadcasting then turns this
+// AxBx1 tensor, and reshape Y into a 1xBxC tensor. Broadcasting then turns this
 // into a cube of multiplications, and then we reduce along the middle axis
 // and cut out the middle axis (since it has dim 1 anyway)
 GraphNodeHandle GraphNodeHandle::matmul(GraphNodeHandle y) const
@@ -251,6 +266,11 @@ GraphNodeHandle GraphNodeHandle::matmul(GraphNodeHandle y) const
     GraphNodeHandle y_reshaped = y.reshape(std::move(y_shape));
     GraphNodeHandle elementwise_mul = x_reshaped * y_reshaped;
     return elementwise_mul.sum(-2, false /* keepdim */); // Sum along the middle axis
+}
+
+GraphNodeHandle sqrt(GraphNodeHandle x)
+{
+    return WrapInUnary(x, UnaryOpType::SQRT);
 }
 
 GraphNodeHandle exp(GraphNodeHandle x)
@@ -550,6 +570,34 @@ GraphNodeHandle min(GraphNodeHandle x, dim_t axis, bool keepdim)
 GraphNodeHandle min(GraphNodeHandle x, Dims dims, bool keepdim)
 {
     return -max(-x, std::move(dims), keepdim);
+}
+
+GraphNodeHandle mean(GraphNodeHandle x, dim_t axis, bool keepdim)
+{
+    axis = FixDim(axis, x.shape().size());
+    float denom = x.shape()[axis];
+    GraphNodeHandle div = x / denom;
+    GraphNodeHandle result = div.sum(axis, keepdim);
+    return result;
+}
+
+GraphNodeHandle variance(GraphNodeHandle x, dim_t axis, bool keepdim)
+{
+    GraphNodeHandle mean = x.mean(axis, true);
+    GraphNodeHandle errors = x - mean;
+    GraphNodeHandle square_errors = errors * errors;
+    GraphNodeHandle sum_square_errors = square_errors.sum(axis, keepdim);
+    return sum_square_errors;
+}
+
+GraphNodeHandle batchnorm(GraphNodeHandle x)
+{
+    GraphNodeHandle mean = x.mean(0, true);
+    GraphNodeHandle errors = x - mean;
+    GraphNodeHandle square_errors = errors * errors;
+    GraphNodeHandle sum_square_errors = square_errors.sum(0, true);
+    GraphNodeHandle result = errors / sqrt(sum_square_errors);
+    return result;
 }
 
 GraphNodeHandle reshape(GraphNodeHandle x, Shape shape)
