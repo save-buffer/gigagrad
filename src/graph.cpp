@@ -597,6 +597,7 @@ GraphNodeHandle batchnorm(GraphNodeHandle x)
     GraphNodeHandle square_errors = errors * errors;
     GraphNodeHandle sum_square_errors = square_errors.sum(0, true);
     GraphNodeHandle result = errors / sqrt(sum_square_errors);
+    result->needs_gradient = false;
     return result;
 }
 

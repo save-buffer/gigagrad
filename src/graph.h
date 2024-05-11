@@ -206,6 +206,7 @@ struct GraphNode
     U u;
     Shape shape;
     Shape strides;
+    bool needs_gradient = true;
 };
 
 GraphNodeHandle sqrt(GraphNodeHandle x);

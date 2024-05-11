@@ -120,58 +120,68 @@ TEST_CASE("TestXor", "[Codegen]")
     }
 }
 
+static std::default_random_engine Gen(0);
+
 void RandomMatrix(float *m, size_t size_elts)
 {
-    static std::default_random_engine gen(0);
     std::uniform_real_distribution<float> dist(-2.0f, 2.0f);
     for(size_t i = 0; i < size_elts; i++)
-        m[i] = dist(gen);
+        m[i] = dist(Gen);
 }
 
-void NaiveMatmul(float *x, float *y, size_t dim, float *result)
+void NaiveMatmul(float *x, float *y, size_t A, size_t B, size_t C, float *result)
 {
-    for(size_t irow = 0; irow < dim; irow++)
+    for(size_t irow = 0; irow < A; irow++)
     {
-        float *row = x + dim * irow;
-        for(size_t icol = 0; icol < dim; icol++)
+        float *row = x + B * irow;
+        for(size_t icol = 0; icol < C; icol++)
         {
             float res = 0.0f;
 
             float *col = y + icol;
-            for(size_t i = 0; i < dim; i++)
+            for(size_t i = 0; i < B; i++)
             {
-                res += row[i] * col[dim * i];
+                res += row[i] * col[C * i];
             }
-            result[dim * irow + icol] = res;
+            result[C * irow + icol] = res;
         }
     }
 }
 
 TEST_CASE("TestMatmul", "[Codegen]")
 {
-    constexpr size_t dim = 128;
-    gg::Graph graph;
-    auto x = graph.AddInput({ dim, dim });
-    auto y = graph.AddInput({ dim, dim });
-    auto result = (x % y).Compile<gg::codegen::BackendScalarC>();
-    
-    x.data() = new float[dim * dim];
-    y.data() = new float[dim * dim];
-    RandomMatrix(x.data(), dim * dim);
-    RandomMatrix(y.data(), dim * dim);
-
-    result.Execute();
-    auto actual = result.data;
-    auto expected = new float[dim * dim];
-    NaiveMatmul(x.data(), y.data(), dim, expected);
-    for(size_t i = 0; i < dim * dim; i++)
+    constexpr size_t NumTrials = 10;
+    for(size_t itrial = 0; itrial < NumTrials; itrial++)
     {
-        REQUIRE(std::abs(actual[i] - expected[i]) / actual[i] <= 0.02f);
+        std::uniform_int_distribution<gg::dim_t> dim_dist(1, 128);
+        gg::dim_t A = dim_dist(Gen);
+        gg::dim_t B = dim_dist(Gen);
+        gg::dim_t C = dim_dist(Gen);
+        std::printf("Trial %zu: (%zu x %zu) * (%zu x %zu)\n", itrial, A, B, B, C);
+
+        gg::Graph graph;
+        auto x = graph.AddInput({ A, B });
+        auto y = graph.AddInput({ B, C });
+        auto result = (x % y).Compile<gg::codegen::BackendScalarC>();
+    
+        x.data() = new float[A * B];
+        y.data() = new float[B * C];
+        RandomMatrix(x.data(), A * B);
+        RandomMatrix(y.data(), B * C);
+
+        result.Execute();
+        auto actual = result.data;
+        auto expected = new float[A * C];
+        NaiveMatmul(x.data(), y.data(), A, B, C, expected);
+        for(gg::dim_t i = 0; i < A * C; i++)
+        {
+            REQUIRE(std::abs(actual[i] - expected[i]) / actual[i] <= 0.02f);
+        }
+        // Make LeakSanitizer happy
+        delete [] x.data();
+        delete [] y.data();
+        delete [] expected;
     }
-    // Make LeakSanitizer happy
-    delete [] x.data();
-    delete [] y.data();
-    delete [] expected;
 }
 
 TEST_CASE("TestLogisticRegressionShape", "[Graph]")

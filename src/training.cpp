@@ -149,6 +149,9 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const ViewOp &v, Graph
 
 void Differentiate(BackpropContext &ctx, GraphNodeHandle node, GraphNodeHandle seed)
 {
+    if(!node->needs_gradient)
+        return;
+
     node->Visit([&](auto &&x) { Differentiate(ctx, node, x, seed); });
 }
 

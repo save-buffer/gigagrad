@@ -261,7 +261,8 @@ int main(int argc, const char **argv)
     auto w1 = network.AddWeight({ HiddenLayerSize, 28 * 28 });
     auto b1 = network.AddWeight({ HiddenLayerSize, 1 });
 
-    auto z1 = (w1 % x) + b1;
+    auto x_bm = x.batchnorm();
+    auto z1 = (w1 % x_bm) + b1;
     auto a2 = z1.relu();
     auto w2 = network.AddWeight({ 10, HiddenLayerSize });
     auto b2 = network.AddWeight({ 10, 1 });
