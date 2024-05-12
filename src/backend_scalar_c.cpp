@@ -124,7 +124,9 @@ static void Lower_ScalarC(LowerCtx &ctx, const FunctionBuilder &fn, size_t ifn)
 static void GenerateMain(const Program &program, LowerCtx &ctx)
 {
     std::fprintf(ctx.file, "void gigagrad_main(void **buffers)\n{\n");
+    std::fprintf(ctx.file, "#if __linux__\n");
     std::fprintf(ctx.file, "    feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);\n");
+    std::fprintf(ctx.file, "#endif\n");
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
     {
         const FunctionBuilder &fn = program.functions[ifn];

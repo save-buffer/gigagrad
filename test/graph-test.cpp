@@ -9,7 +9,11 @@
 
 namespace gg = gigagrad;
 
-void TestUnary(gg::nn::Module &network, gg::GraphNodeHandle w, gg::GraphNodeHandle result, float expected)
+void TestGradient(
+    gg::nn::Module &network,
+    gg::GraphNodeHandle w,
+    gg::GraphNodeHandle result,
+    float expected)
 {
     gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result, 1.0);
     float example = 0.0f;
@@ -28,7 +32,7 @@ TEST_CASE("TestGradients_EXP", "[Train]")
     // ∂/∂w (E - exp(w))^2 = 2(E - exp(w)) * ∂/∂w(E - exp(w)) = 2(E - exp(w)) * -exp(w)
     // If E = 0, above equals 2exp(2w). If w = 0, above equals 2. So after gradient update,
     // w should be 0 - 2 = -2.
-    TestUnary(network, w, result, -2.0f);
+    TestGradient(network, w, result, -2.0f);
 }
 
 TEST_CASE("TestGradients_LOG", "[Train]")
@@ -41,7 +45,7 @@ TEST_CASE("TestGradients_LOG", "[Train]")
     // ∂/∂w (E - log(w))^2 = 2(E - log(w)) * ∂/∂w(E - log(w)) = 2(E - log(w)) * -1/w
     // If E = 0, above equals log(w)/w. If w = 1, above equals 0. So after gradient update,
     // w should be 1 - 0 = 1.
-    TestUnary(network, w, result, 1.0f);
+    TestGradient(network, w, result, 1.0f);
 }
 
 TEST_CASE("TestGradients_SIN", "[Train]")
@@ -54,7 +58,52 @@ TEST_CASE("TestGradients_SIN", "[Train]")
     // ∂/∂w (E - sin(w))^2 = 2(E - sin(w)) * ∂/∂w(E - sin(w)) = 2(E - sin(w)) * -cos(w)
     // If E = 0, above equals 2sin(w)cos(w). If w = 0, above equals 0. So after gradient update,
     // w should be 0 - 0 = 0.
-    TestUnary(network, w, result, 0.0f);
+    TestGradient(network, w, result, 0.0f);
+}
+
+TEST_CASE("TestGradients_SQRT", "[Train]")
+{
+    gg::nn::Module network;
+    auto w = network.AddWeight(1);
+    auto result = sqrt(w);
+    float w_data = 1.0f;
+    w.data() = &w_data;
+    // ∂/∂w (E - sqrt(w))^2 = 2(E - sqrt(w)) * ∂/∂w(E - sqrt(w)) = 2(E - sqrt(w)) * (0 - 1/2 * 1/sqrt(w))
+    // If E = 0, above equals -2sqrt(w)/-2sqrt(w). If w = 1, above equals 1. So after gradient update,
+    // w should be 1 - 1 = 0.
+    TestGradient(network, w, result, 0.0f);
+}
+
+TEST_CASE("TestGradients_ADD", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = x + w;
+    float x_data = 1.0f;
+    float w_data = 1.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - (x + w))^2 = 2(E - x - w) * ∂/∂w(E - x - w) = 2(E - x - w) * (0 - 0 - 1) = -2(E - x - w)
+    // If E = 0, above equals 2(x + w). If x,w = 1, above equals 4. So after gradient update,
+    // w should be 1 - 4 = -3.0f.
+    TestGradient(network, w, result, -3.0f);
+}
+
+TEST_CASE("TestGradients_SUB", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = x - w;
+    float x_data = 0.0f;
+    float w_data = 1.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - (x - w))^2 = 2(E - x + w) * ∂/∂w(E - x + w) = 2(E - x + w) * (0 - 0 + 1) = 2(E - x + w)
+    // If E = 0, above equals 2(-x + w). If x = 0, w = 1, above equals 2. So after gradient update,
+    // w should be 1 - 2 = -1.0f.
+    TestGradient(network, w, result, -1.0f);
 }
 
 TEST_CASE("TestTrainSimple", "[Train]")

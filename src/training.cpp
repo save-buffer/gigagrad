@@ -55,7 +55,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const UnaryOp &u,
         break;
     case UnaryOpType::SQRT:
         // ∇(sqrt(x)) = { s * 1/(2 * sqrt(x)) * ∂x }
-        Differentiate(ctx, u.x, seed * 1.0f / (2.0f * node));
+        Differentiate(ctx, u.x, seed / (2.0f * node));
         break;
     default:
         throw std::runtime_error("Unimplemented operation");
@@ -72,9 +72,9 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
         Differentiate(ctx, b.y, seed);
         break;
     case BinaryOpType::SUB:
-        // ∇(x - y) = { s * ∂x, s * -∂y }
+        // ∇(x - y) = { s * ∂x, s * -1 * ∂y }
         Differentiate(ctx, b.x, seed);
-        Differentiate(ctx, -b.y, seed);
+        Differentiate(ctx, b.y, -seed);
         break;
     case BinaryOpType::MUL:
         // ∇(x * y) = { s * y * ∂x, s * x * ∂y }
@@ -166,7 +166,7 @@ TrainingContext CompileTrainingGraph(
 {
     GraphNodeHandle training_example = network.AddInput(model_output.shape()); 
     GraphNodeHandle error = model_output - training_example;
-    GraphNodeHandle loss = sum(error.swapaxes(-1, -2) % error);
+    GraphNodeHandle loss = sum(error * error);
     GraphNodeHandle seed = network.Immediate(learning_rate);
     BackpropContext ctx;
     Differentiate(ctx, loss, seed);

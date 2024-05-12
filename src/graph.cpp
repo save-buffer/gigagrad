@@ -592,10 +592,11 @@ GraphNodeHandle variance(GraphNodeHandle x, dim_t axis, bool keepdim)
 
 GraphNodeHandle batchnorm(GraphNodeHandle x)
 {
+    constexpr float epsilon = 0.001;
     GraphNodeHandle mean = x.mean(0, true);
     GraphNodeHandle errors = x - mean;
     GraphNodeHandle square_errors = errors * errors;
-    GraphNodeHandle sum_square_errors = square_errors.sum(0, true);
+    GraphNodeHandle sum_square_errors = square_errors.sum(0, true) + epsilon;
     GraphNodeHandle result = errors / sqrt(sum_square_errors);
     result->needs_gradient = false;
     return result;

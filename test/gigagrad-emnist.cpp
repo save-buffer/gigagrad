@@ -279,8 +279,8 @@ int main(int argc, const char **argv)
     InitializeWeights(w2.data(), 10 * HiddenLayerSize);
     InitializeWeights(b2.data(), 10 * 1);
 
-    size_t num_batches = (train.shape[0] + BatchSize - 1) / BatchSize;
-    for(size_t iepoch = 0; iepoch < 4; iepoch++)
+    size_t num_batches = train.shape[0] / BatchSize;
+    for(size_t iepoch = 0; iepoch < 100; iepoch++)
     {
         for(size_t ibatch = 0; ibatch < num_batches; ibatch++)
         {
