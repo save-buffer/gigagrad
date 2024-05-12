@@ -301,7 +301,10 @@ GraphNodeHandle sigmoid(GraphNodeHandle x)
 
 GraphNodeHandle operator-(GraphNodeHandle x)
 {
-    return 0 - x;
+    Graph *graph = x.graph;
+    // To avoid infinite recursion
+    GraphNodeHandle zero = graph->Immediate(0.0f);
+    return zero - x;
 }
 
 GraphNodeHandle operator+(GraphNodeHandle x, GraphNodeHandle y)
