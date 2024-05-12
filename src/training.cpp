@@ -74,7 +74,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
     case BinaryOpType::SUB:
         // ∇(x - y) = { s * ∂x, s * -1 * ∂y }
         Differentiate(ctx, b.x, seed);
-        Differentiate(ctx, b.y, -seed);
+        Differentiate(ctx, b.y, -1 * seed);
         break;
     case BinaryOpType::MUL:
         // ∇(x * y) = { s * y * ∂x, s * x * ∂y }

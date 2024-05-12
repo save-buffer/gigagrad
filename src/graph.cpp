@@ -330,7 +330,7 @@ GraphNodeHandle operator-(GraphNodeHandle x, GraphNodeHandle y)
 
 GraphNodeHandle operator-(float x, GraphNodeHandle y)
 {
-    return (-x) + y;
+    return x + (-y);
 }
 
 GraphNodeHandle operator-(GraphNodeHandle x, float y)
