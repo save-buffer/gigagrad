@@ -104,7 +104,7 @@ TEST_CASE("TestGradients_SUB", "[Train]")
     // ∂/∂w (E - (x - w))^2 = 2(E - x + w) * ∂/∂w(E - x + w) = 2(E - x + w) * (0 - 0 + 1) = 2(E - x + w)
     // If E = 0, above equals 2(-x + w). If x = 0, w = 1, above equals 2. So after gradient update,
     // w should be 1 - 2 = -1.0f.
-    TestGradient(network, w, result, 3.0f);
+    TestGradient(network, w, result, -1.0f);
 }
 
 TEST_CASE("TestTrainSimple", "[Train]")
