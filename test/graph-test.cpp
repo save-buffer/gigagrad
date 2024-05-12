@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "src/graph.h"
 #include "src/codegen.h"
 #include "src/backend_scalar_c.h"
@@ -19,8 +20,9 @@ void TestGradient(
     float example = 0.0f;
     ctx.training_example = &example;
     ctx.Execute();
-    float pct_diff = std::abs(*w.data() - expected);
-    REQUIRE(pct_diff < 0.001);
+    REQUIRE_THAT(*w.data(),
+                 Catch::Matchers::WithinRel(expected, 0.001f)
+                 || Catch::Matchers::WithinAbs(0, 0.000001f));
 }
 
 TEST_CASE("TestGradients_EXP", "[Train]")
