@@ -1,0 +1,1 @@
+option('build_metal', type : 'feature', value: 'auto')

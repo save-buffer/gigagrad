@@ -8,12 +8,16 @@ if host_machine.system() == 'darwin'
     run_command('wget', 'https://developer.apple.com/metal/cpp/files/metal-cpp_macOS14.2_iOS17.2.zip')
     run_command('unzip', 'metal-cpp_macOS14.2_iOS17.2.zip')
     run_command('python3', 'metal-cpp/SingleHeader/MakeSingleHeader.py', 'metal-cpp/Foundation/Foundation.hpp', 'metal-cpp/QuartzCore/QuartzCore.hpp', 'metal-cpp/Metal/Metal.hpp')
-    run_command('rm', 'metal-cpp_macOS14.2_iOS17.2.zip')
   endif
   gigagrad_deps += dependency('appleframeworks', modules : ['foundation', 'quartz', 'metal'])
 endif
 
 gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend_scalar_c.cpp', 'src/training.cpp', 'src/backend_metal.cpp']
+
+if get_option('build_metal').enabled()
+  gigagrad_sources += 'src/backend_metal.cpp'
+endif
+
 gigagrad = library('gigagrad', gigagrad_sources, dependencies : gigagrad_deps)
 
 test_deps = [dependency('catch2-with-main')]
