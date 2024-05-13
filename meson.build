@@ -1,17 +1,20 @@
 project('gigagrad', 'cpp', default_options : ['cpp_std=c++20'])
 
-gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend_scalar_c.cpp', 'src/training.cpp']
+gigagrad_deps = []
 
 if host_machine.system() == 'darwin'
   fs = import('fs')
   if not fs.is_dir('metal-cpp')
     run_command('wget', 'https://developer.apple.com/metal/cpp/files/metal-cpp_macOS14.2_iOS17.2.zip')
     run_command('unzip', 'metal-cpp_macOS14.2_iOS17.2.zip')
-    run_command('python3', 'metal-cpp/SingleHeader/MakeSingleHeader.py')
+    run_command('python3', 'metal-cpp/SingleHeader/MakeSingleHeader.py', 'metal-cpp/Foundation/Foundation.hpp', 'metal-cpp/QuartzCore/QuartzCore.hpp', 'metal-cpp/Metal/Metal.hpp')
+    run_command('rm', 'metal-cpp_macOS14.2_iOS17.2.zip')
   endif
+  gigagrad_deps += dependency('appleframeworks', modules : ['foundation', 'quartz', 'metal'])
 endif
 
-gigagrad = library('gigagrad', gigagrad_sources)
+gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend_scalar_c.cpp', 'src/training.cpp', 'src/backend_metal.cpp']
+gigagrad = library('gigagrad', gigagrad_sources, dependencies : gigagrad_deps)
 
 test_deps = [dependency('catch2-with-main')]
 
