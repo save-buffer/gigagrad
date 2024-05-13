@@ -2,6 +2,12 @@
 #include "backend.h"
 #include "codegen.h"
 
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+#include "metal-cpp/SingleHeader/Metal.hpp"
+
+
 namespace gigagrad
 {
 namespace codegen

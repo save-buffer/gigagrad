@@ -162,7 +162,16 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
     std::system(lib_command.c_str());
 
     // std::printf("Metallib with: %s\n", lib_command.c_str());
+    auto devices = MTL::CopyAllDevices();
+    MTL::Device* mtl_device_ = static_cast<MTL::Device*>(devices->object(0)) ?: MTL::CreateSystemDefaultDevice();
 
+    auto library = NS::String::string(lib_path.c_str(), NS::UTF8StringEncoding);
+    NS::Error* error = nullptr;
+    MTL::Library* library_ = mtl_device_->newLibrary(library, &error);
+    if (error != nullptr)
+      throw std::runtime_error("failed to create metal library");
+
+#if 0
     void *handle = dlopen(lib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if(!handle)
         throw std::runtime_error(dlerror());
@@ -177,6 +186,7 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
             throw std::runtime_error(err);
     }
     return { main_fn, handle };
+#endif
 }
 
 static std::pair<GraphEvalFn, void *> Lower_Metal(const char *prefix, const Program &program)
@@ -256,8 +266,3 @@ void BackendMetal::Execute()
     }
     eval_fn(this->buffers.data());
 }
-
-#define NS_PRIVATE_IMPLEMENTATION
-#define CA_PRIVATE_IMPLEMENTATION
-#define MTL_PRIVATE_IMPLEMENTATION
-#include "metal-cpp/SingleHeader/Metal.hpp"
