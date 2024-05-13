@@ -7,6 +7,11 @@
 
 #include <dlfcn.h>
 
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
+#include "metal-cpp/SingleHeader/Metal.hpp"
+
 using namespace gigagrad;
 using namespace gigagrad::codegen;
 
@@ -16,6 +21,7 @@ struct LowerCtx
     FILE *file;
     int indentation;
     int loop_depth;
+    size_t outer_loop_range;
 };
 
 static void Lower_Metal(LowerCtx &ctx, const LoadIntImmediateInsn &i, size_t iinsn)
@@ -34,7 +40,7 @@ static void Lower_Metal(LowerCtx &ctx, const BeginLoopInsn &i, size_t iinsn)
     if(ctx.loop_depth == 0)
     {
         std::fprintf(ctx.file, "%*sint64_t v%zu = outer_idx;\n", ctx.indentation, " ", iinsn);
-        ctx.loop_depth += 1;
+        ctx.outer_loop_range = i.range;
     }
     else
     {
@@ -42,6 +48,7 @@ static void Lower_Metal(LowerCtx &ctx, const BeginLoopInsn &i, size_t iinsn)
                      ctx.indentation, " ", iinsn, iinsn, i.range, iinsn, ctx.indentation, " ");
         ctx.indentation += 4;
     }
+    ctx.loop_depth += 1;
 }
 
 static void Lower_Metal(LowerCtx &ctx, const EndLoopInsn &i, size_t iinsn)
@@ -137,7 +144,7 @@ static void Lower_Metal(LowerCtx &ctx, const FunctionBuilder &fn, size_t ifn)
 
 using GraphEvalFn = BackendMetal::GraphEvalFn;
 
-static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path &source_path)
+static void CompileAndLoad(BackendMetal &backend, const std::filesystem::path &source_path)
 {
     std::filesystem::path ir_path = source_path;
     ir_path.replace_extension(".ir");
@@ -146,7 +153,7 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
     lib_path.replace_extension(".metallib");
 
     std::string ir_command =
-        "xcrun -sdk macosx metal -c " +
+        "xcrun -sdk macosx metal -Ofast -c " +
         source_path.string() +
         " -o " +
         ir_path.string();
@@ -162,24 +169,17 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
     std::system(lib_command.c_str());
 
     // std::printf("Metallib with: %s\n", lib_command.c_str());
+    auto devices = MTL::CopyAllDevices();
+    backend.device = static_cast<MTL::Device*>(devices->object(0)) ?: MTL::CreateSystemDefaultDevice();
 
-    void *handle = dlopen(lib_path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if(!handle)
-        throw std::runtime_error(dlerror());
-    dlerror(); // Clear error conditions
-    auto main_fn = reinterpret_cast<GraphEvalFn>(dlsym(handle, "gigagrad_main"));
-    if(!main_fn)
-    {
-        char *err = dlerror();
-        if(!err)
-            throw std::runtime_error("Symbol gigagrad_main is NULL, which is unexpected");
-        else
-            throw std::runtime_error(err);
-    }
-    return { main_fn, handle };
+    auto library_path_ns = NS::String::string(lib_path.c_str(), NS::UTF8StringEncoding);
+    NS::Error* error = nullptr;
+    backend.library = backend.device->newLibrary(library_path_ns, &error);
+    if (error != nullptr)
+        throw std::runtime_error("failed to create metal library");
 }
 
-static std::pair<GraphEvalFn, void *> Lower_Metal(const char *prefix, const Program &program)
+static void Lower_Metal(BackendMetal &backend, const char *prefix, const Program &program)
 {
     auto file_name = std::filesystem::temp_directory_path() / prefix;
     file_name += ".metal";
@@ -188,34 +188,27 @@ static std::pair<GraphEvalFn, void *> Lower_Metal(const char *prefix, const Prog
     if(!file)
         throw std::system_error(errno, std::generic_category());
 
-    LowerCtx ctx = { prefix, file, 0, 0 };
+    LowerCtx ctx = { prefix, file, 0, 0, 0 };
 
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
+    {
         ::Lower_Metal(ctx, program.functions[ifn], ifn);
+        if(ifn == 0)
+            backend.outer_dim = ctx.outer_loop_range;
+    }
 
     std::fclose(file);
-    return CompileAndLoad(file_name);
+    CompileAndLoad(backend, file_name);
 }
 
 BackendMetal::~BackendMetal()
 {
-    dlclose(this->handle);
-    for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
-    {
-        auto &desc = this->program.buffers[ibuff];
-        if(!std::holds_alternative<GraphNodeHandle>(desc.id))
-        {
-            delete [] reinterpret_cast<float *>(this->buffers[ibuff]);
-        }
-    }
 }
 
 void BackendMetal::LowerProgram(Program &&program)
 {
     this->program = std::move(program);
-    auto [eval_fn, handle] = Lower_Metal("gg_metal", this->program);
-    this->eval_fn = eval_fn;
-    this->handle = handle;
+    Lower_Metal(*this, "gg_metal", this->program);
 }
 
 void *BackendMetal::InitBuffers()
@@ -227,12 +220,16 @@ void *BackendMetal::InitBuffers()
         if(std::holds_alternative<GraphNodeHandle>(desc.id))
         {
             GraphNodeHandle tensor = std::get<GraphNodeHandle>(desc.id);
-            this->buffers.push_back(reinterpret_cast<void *>(tensor.data()));
+            MTL::Buffer *buffer = device->newBuffer(
+                reinterpret_cast<void *>(tensor.data()), 
+                tensor->shape[0] * tensor->strides[0],
+                0);
+            this->buffers.push_back(buffer);
         }
         else
         {
-            float *intermediate_buf = new float[desc.size_elts];
-            this->buffers.push_back(reinterpret_cast<void *>(intermediate_buf));
+            MTL::Buffer *buffer = device->newBuffer(desc.size_elts * sizeof(float), 0);
+            this->buffers.push_back(buffer);
         }
     }
     return this->buffers[this->program.functions.back().output_buffer];
@@ -245,6 +242,7 @@ void *BackendMetal::GetBuffer(size_t idx)
 
 void BackendMetal::Execute()
 {
+#if 0
     for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
     {
         auto &desc = this->program.buffers[ibuff];
@@ -254,10 +252,50 @@ void BackendMetal::Execute()
             this->buffers[ibuff] = (reinterpret_cast<void *>(tensor.data()));
         }
     }
-    eval_fn(this->buffers.data());
+#endif
+    NS::Error *error = nullptr;
+    std::string name = "gg_metal_0";
+    auto function_name = NS::String::string(name.c_str(), NS::ASCIIStringEncoding);
+    auto mtl_function = this->library->newFunction(function_name);
+    if (!mtl_function)
+        throw std::runtime_error("Failed to find metal function: " + name);
+
+    this->pipeline = this->device->newComputePipelineState(mtl_function, &error);
+    if (error)
+        throw std::runtime_error(error->localizedDescription()->utf8String());
+
+    this->queue = this->device->newCommandQueue();
+    if(!this->queue)
+        throw std::runtime_error("Failed to create command queue");
+
+    this->command_buffer = this->queue->commandBufferWithUnretainedReferences();
+    if (!this->command_buffer)
+        throw std::runtime_error("failed to create command buffer");
+
+    this->command_buffer->retain();
+    this->enc = command_buffer->computeCommandEncoder();
+    this->enc->setComputePipelineState(this->pipeline);
+    this->enc->retain();
+
+    MTL::Size grid_size = MTL::Size(this->outer_dim, 1, 1);
+    NS::UInteger num_threads = std::min(this->outer_dim, this->pipeline->maxTotalThreadsPerThreadgroup());
+    MTL::Size thread_group_size = MTL::Size(num_threads, 1, 1);
+
+    for(ssize_t ibuff = 0; ibuff < std::size(this->program.buffers); ibuff++)
+    {
+        enc->setBuffer(this->buffers[ibuff], 0, ibuff);
+        enc->setBuffer(this->buffers[ibuff], 0, ibuff);
+        enc->setBuffer(this->buffers[ibuff], 0, ibuff);
+    }
+
+    this->enc->dispatchThreads(grid_size, thread_group_size);
+    this->enc->endEncoding();
+
+    command_buffer->commit();
+
+    MTL::CommandBufferStatus status = command_buffer->status();
+    this->command_buffer->waitUntilCompleted();
+    this->enc->release();
+    this->command_buffer->release();
 }
 
-#define NS_PRIVATE_IMPLEMENTATION
-#define CA_PRIVATE_IMPLEMENTATION
-#define MTL_PRIVATE_IMPLEMENTATION
-#include "metal-cpp/SingleHeader/Metal.hpp"

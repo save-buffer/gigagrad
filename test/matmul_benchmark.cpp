@@ -32,22 +32,35 @@ int main()
     auto a = graph.AddInput({ MatrixSize, MatrixSize });
     auto b = graph.AddInput({ MatrixSize, MatrixSize });
     auto matmul = a % b;
-    auto result = matmul.Compile<gg::codegen::BackendMetal>();
 
     a.data() = A.data();
     b.data() = B.data();
 
-    auto start = std::chrono::high_resolution_clock::now();
+    auto scalar = matmul.Compile<gg::codegen::BackendScalarC>();
+    auto metal = matmul.Compile<gg::codegen::BackendMetal>();
+
+    auto start_scalar = std::chrono::high_resolution_clock::now();
     for(size_t i = 0; i < NumIterations; i++)
     {
-        result.Execute();
+        scalar.Execute();
     }
-    auto end = std::chrono::high_resolution_clock::now();
+    auto end_scalar = std::chrono::high_resolution_clock::now();
 
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+    auto start_metal = std::chrono::high_resolution_clock::now();
+    for(size_t i = 0; i < NumIterations; i++)
+    {
+        metal.Execute();
+    }
+    auto end_metal = std::chrono::high_resolution_clock::now();
+
+    auto duration_scalar = std::chrono::duration_cast<std::chrono::milliseconds>(end_scalar - start_scalar)
         / static_cast<double>(NumIterations);
 
-    printf("ScalarC: %.4fms\n", duration.count());
+    auto duration_metal = std::chrono::duration_cast<std::chrono::milliseconds>(end_metal - start_metal)
+        / static_cast<double>(NumIterations);
+
+    printf("Scalar: %.4fms\n", duration_scalar.count());
+    printf("Metal: %.4fms\n", duration_metal.count());
 
     return 0;
 }
