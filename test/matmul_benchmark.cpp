@@ -1,5 +1,6 @@
 #include "src/graph.h"
 #include "src/backend_scalar_c.h"
+#include "src/backend_metal.h"
 
 #include <chrono>
 #include <iostream>
@@ -31,7 +32,7 @@ int main()
     auto a = graph.AddInput({ MatrixSize, MatrixSize });
     auto b = graph.AddInput({ MatrixSize, MatrixSize });
     auto matmul = a % b;
-    auto result = matmul.Compile<gg::codegen::BackendScalarC>();
+    auto result = matmul.Compile<gg::codegen::BackendMetal>();
 
     a.data() = A.data();
     b.data() = B.data();
