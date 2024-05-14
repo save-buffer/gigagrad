@@ -62,7 +62,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const UnaryOp &u,
     }
 }
 
-void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, GraphNodeHandle seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const BinaryOp &b, GraphNodeHandle seed)
 {
     switch(b.type)
     {
@@ -74,7 +74,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
     case BinaryOpType::SUB:
         // ∇(x - y) = { s * ∂x, s * -1 * ∂y }
         Differentiate(ctx, b.x, seed);
-        Differentiate(ctx, b.y, -1 * seed);
+        Differentiate(ctx, b.y, -seed);
         break;
     case BinaryOpType::MUL:
         // ∇(x * y) = { s * y * ∂x, s * x * ∂y }
@@ -89,12 +89,12 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
     case BinaryOpType::POW:
         // ∇(x^y) = { syx^(y - 1) * ∂x, s * log(x) * x^y * ∂y }
         Differentiate(ctx, b.x, seed * b.y * pow(b.x, b.y - 1));
-        Differentiate(ctx, b.y, seed * log(b.x) * pow(b.x, b.y));
+        Differentiate(ctx, b.y, seed * log(b.x) * node);
         break;
     case BinaryOpType::CMP:
         // ∇(x == y) = { s * (x == y ? 1 : 0), s * (a == b ? 1 : 0) }
-        Differentiate(ctx, b.x, seed * (b.x == b.y));
-        Differentiate(ctx, b.y, seed * (b.x == b.y));
+        Differentiate(ctx, b.x, seed * node);
+        Differentiate(ctx, b.y, seed * node);
         break;
     case BinaryOpType::MAX:
         // ∇(max(x, y)) = { s * (x > y), s * (y >= x) }
@@ -107,7 +107,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle, const BinaryOp &b, Gra
 void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ReduceOp &r, GraphNodeHandle seed)
 {
     // Reinsert 1's if we don't have keepdim so that broadcasting semantics work
-    if(!r.keepdim)
+    if(!r.keepdim && !seed.shape().empty())
     {
         Shape shape(r.x.shape().size());
         std::copy(seed.shape().begin(), seed.shape().end(), shape.begin());
@@ -132,6 +132,7 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ReduceOp &r
     switch(r.type)
     {
     case ReduceOpType::SUM:
+        // ∇(sum(x)) = { s * ∂x }
         Differentiate(ctx, r.x, seed);
         break;
     case ReduceOpType::MAX:

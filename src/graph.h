@@ -39,6 +39,9 @@ struct GraphNodeHandle
     Graph *graph;
     size_t node_idx;
 
+    GraphNodeHandle pow(float x) const;
+    GraphNodeHandle pow(GraphNodeHandle x) const;
+
     GraphNodeHandle sum(bool keepdim = false) const;
     GraphNodeHandle sum(dim_t axis, bool keepdim = false) const;
     GraphNodeHandle sum(Dims dims, bool keepdim = false) const;
@@ -61,7 +64,7 @@ struct GraphNodeHandle
 
     GraphNodeHandle matmul(GraphNodeHandle y) const;
 
-    const Shape &shape() const; // Empty shape means scalar
+    const Shape &shape() const;
     const Shape &strides() const;
 
     GraphNode &GetNode();

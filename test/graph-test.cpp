@@ -10,6 +10,13 @@
 
 namespace gg = gigagrad;
 
+void CheckApproxEqual(float actual, float expected)
+{
+    REQUIRE_THAT(actual,
+                 Catch::Matchers::WithinRel(expected, 0.001f)
+                 || Catch::Matchers::WithinAbs(expected, 0.000001f));
+}
+
 void TestGradient(
     gg::nn::Module &network,
     gg::GraphNodeHandle w,
@@ -20,9 +27,7 @@ void TestGradient(
     float example = 0.0f;
     ctx.training_example = &example;
     ctx.Execute();
-    REQUIRE_THAT(*w.data(),
-                 Catch::Matchers::WithinRel(expected, 0.001f)
-                 || Catch::Matchers::WithinAbs(0, 0.000001f));
+    CheckApproxEqual(*w.data(), expected);
 }
 
 TEST_CASE("TestGradients_EXP", "[Train]")
@@ -109,6 +114,194 @@ TEST_CASE("TestGradients_SUB", "[Train]")
     TestGradient(network, w, result, -1.0f);
 }
 
+TEST_CASE("TestGradients_MUL", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = x * w;
+    float x_data = 1.0f;
+    float w_data = 1.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - xw)^2 = 2(E - xw) * ∂/∂w(E - xw) = 2(E - xw) * (0 - (w∂x/∂w + x∂w/∂w))
+    // = 2(E - xw) * (0 - (0 + x)) = 2(E - xw) * (-x)
+    // If E = 0, above equals 2(0 - xw) * -x = 2wx^2. If x = 1, w = 1, above equals 2.
+    // So after gradient update, w should be 1 - 2 = -1.0f.
+    TestGradient(network, w, result, -1.0f);
+}
+
+TEST_CASE("TestGradients_DIV_Numerator", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = w / x;
+    float x_data = 1.0f;
+    float w_data = 1.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - w/x)^2 = 2(E - w/x) * ∂/∂w(E - w/x) = 2(E - w/x) * (0 - 1/x)
+    // = 2(E - w/x) * -1/x
+    // If E = 0, above equals -2w/x * -1/x = 2w/x^2. If x = 1, w = 1, above equals 2.
+    // So after gradient update, w should be 1 - 2 = -1.0f;
+    TestGradient(network, w, result, -1.0f);
+}
+
+TEST_CASE("TestGradients_DIV_Denominator", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = x / w;
+    float x_data = 1.0f;
+    float w_data = 1.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - x/w)^2 = 2(E - x/w) * ∂/∂w(E - x/w) = 2(E - x/w) * (0 - (-x/w^2))
+    // = 2(E - xw) * (0 + x/w^2) = 2(E - xw) * x/w^2
+    // If E = 0, above equals -2xw * x/w^2 = -2x^2/w. If x = 1, w = 1, above equals -2.
+    // So after gradient update, w should be 1 - (-2) = 3.0f.
+    TestGradient(network, w, result, 3.0f);
+}
+
+TEST_CASE("TestGradients_POW_Base", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = w.pow(x);
+    float x_data = 1.0f;
+    float w_data = 2.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - w^x)^2 = 2(E - w^x) * ∂/∂w(E - w^x) = 2(E - w^x) * (0 - xw^(x-1))
+    // = 2(E - w^x)(-xw^(x-1))
+    // If E = 0, above equals 2w^x * xw^(x-1) = 2xw^(2x-1)
+    // If x = 1, w = 2, above equals to 2*2^(2 - 1) = 2^2 = 4
+    // So after gradient update, w should be 2 - 4 = -2.0f.
+    TestGradient(network, w, result, -2.0f);
+}
+
+TEST_CASE("TestGradients_POW_Exponent", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = x.pow(w);
+    float x_data = 2.0f;
+    float w_data = 2.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - x^w)^2 = 2(E - x^w) * ∂/∂w(E - x^w) = 2(E - x^w) * (0 - log(x)x^w)
+    // If E = 0, above equals -2x^w * -log(x)x^w = 2log(x)x^(2w)
+    // If x = 2, w = 2, above equals to 2 * log(2) * 2^4 = 32log(2)
+    // So after gradient update, w should be 2 - 32log(2).
+    TestGradient(network, w, result, 2 - 32 * std::log(2.0f));
+}
+
+TEST_CASE("TestGradients_CMP_Equal", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = x == w;
+    float x_data = 1.0f;
+    float w_data = 1.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - x=w)^2 = 2(E - x=w) * ∂/∂w(E - x=w) = 2(E - x=w) * (0 - x=w)
+    // If E = 0, above equals 2(x=w)^2 = 2(x=w)
+    // If x = 1, w = 1, above equals to 2(1==1) = 2
+    // So after gradient update, w should be 1 - 2 = -1.0f.
+    TestGradient(network, w, result, -1.0f);
+}
+
+TEST_CASE("TestGradients_CMP_NotEqual", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = x == w;
+    float x_data = 1.0f;
+    float w_data = 2.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - x=w)^2 = 2(E - x=w) * ∂/∂w(E - x=w) = 2(E - x=w) * (0 - x=w)
+    // If E = 0, above equals 2(x=w)^2 = 2(x=w)
+    // If x = 1, w = 2, above equals to 2(1==2) = 0
+    // So after gradient update, w should be 2 - 0 = 2.0f.
+    TestGradient(network, w, result, 2.0f);
+}
+
+TEST_CASE("TestGradients_MAX_Greater", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = max(x, w);
+    float x_data = 1.0f;
+    float w_data = 2.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - max(x, w))^2 = 2(E - max(x, w)) * ∂/∂w(E - max(x, w))
+    // = 2(E - max(x, w)) * (0 - (x > w ? 0 : 1))
+    // If E = 0, above equals 2max(x, w) * (x > w ? 0 : 1)
+    // If x = 1, w = 2, above equals to 2 * 2 * (1 > 2 ? 0 : 1) = 4 * 1 = 4.
+    // So after gradient update, w should be 2 - 4 = -2.0f;
+    TestGradient(network, w, result, -2.0f);
+}
+
+TEST_CASE("TestGradients_MAX_Less", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput(1);
+    auto w = network.AddWeight(1);
+    auto result = max(x, w);
+    float x_data = 2.0f;
+    float w_data = 1.0f;
+    x.data() = &x_data;
+    w.data() = &w_data;
+    // ∂/∂w (E - max(x, w))^2 = 2(E - max(x, w)) * ∂/∂w(E - max(x, w))
+    // = 2(E - max(x, w)) * (0 - (x > w ? 0 : 1))
+    // If E = 0, above equals 2max(x, w) * (x > w ? 0 : 1)
+    // If x = 2, w = 1, above equals to 2 * 2 * (2 > 1 ? 0 : 1) = 0.
+    // So after gradient update, w should be 1 - 0 = 2.0f;
+    TestGradient(network, w, result, 1.0f);
+}
+
+TEST_CASE("TestGradients_SUM", "[Train]")
+{
+    gg::nn::Module network;
+    auto w = network.AddWeight(3);
+    auto result = sum(w);
+    float w_data[] = { 1, 2, 3 };
+    w.data() = w_data;
+    // ∇((E - (w1 + w2 + w3))^2) = 2(E - (w1 + w2 + w3)) * ∇(E - (w1 + w2 + w3))
+    // = 2(E - w1 - w2 - w3) * { -1, -1, -1 }
+    // If E = 0 and w = { 1, 2, 3 }, we have 2(0 - 6) * { -1, -1, -1 } = { 12, 12, 12 }
+    // After gradient updates, we should have { 1 - 12, 2 - 12, 3 - 12 } = { -11, -10, -9 }.
+    TestGradient(network, w, result, -11.0f);
+    CheckApproxEqual(w.data()[1], -10.0f);
+    CheckApproxEqual(w.data()[2], -9.0f);
+}
+
+TEST_CASE("TestGradients_MAX", "[Train]")
+{
+    gg::nn::Module network;
+    auto w = network.AddWeight(3);
+    auto result = max(w);
+    float w_data[] = { 1, 2, 3 };
+    w.data() = w_data;
+    // ∇((E - max(w))^2) = 2(E - max(w)) * ∇(E - max(w))
+    // = 2(E - max(w)) * -{ w1 == max(w), w2 == max(w), w3 == max(w) }
+    // If E = 0 and w = { 1, 2, 3 }, we have 2(0 - 3) * -{ 0, 0, 1 } = { 0, 0, 6 }
+    // After gradient updates, we should have { 1 - 0, 2 - 0, 3 - 6 } = { 1, 2, -3 }
+    TestGradient(network, w, result, 1.0f);
+    CheckApproxEqual(w.data()[1], 2.0f);
+    CheckApproxEqual(w.data()[2], -3.0f);
+}
+
 TEST_CASE("TestTrainSimple", "[Train]")
 {
     gg::nn::Module network;
@@ -130,8 +323,9 @@ TEST_CASE("TestTrainSimple", "[Train]")
     }
     for(int i = 0; i < 4; i++)
     {
-        float pct_diff = (std::abs(w_data[i] - x_data[i]) / x_data[i]) * 100.0f;
-        REQUIRE(pct_diff < 1);
+        REQUIRE_THAT(w_data[i],
+                     Catch::Matchers::WithinRel(x_data[i], 0.001f)
+                     || Catch::Matchers::WithinAbs(x_data[i], 0.000001f));
     }
 }
 
@@ -145,7 +339,6 @@ TEST_CASE("TestXor", "[Codegen]")
     auto L1 = (w1 % x) > b1;
     auto L2 = (w2 % L1) > 1.5f;
     auto result = L2.Compile<gg::codegen::BackendScalarC>();
-
     REQUIRE(L1.shape() == gg::Shape{2, 1});
     REQUIRE(L2.shape() == gg::Shape{1, 1});
 
@@ -167,7 +360,9 @@ TEST_CASE("TestXor", "[Codegen]")
             result.Execute();
 
             float expected = (x1 ^ x2) ? 1.0f : 0.0f;
-            REQUIRE(result.data[0] == expected);
+            REQUIRE_THAT(result.data[0],
+                         Catch::Matchers::WithinRel(expected, 0.001f)
+                         || Catch::Matchers::WithinAbs(expected, 0.000001f));
         }
     }
 }
@@ -227,7 +422,9 @@ TEST_CASE("TestMatmul", "[Codegen]")
         NaiveMatmul(x.data(), y.data(), A, B, C, expected);
         for(gg::dim_t i = 0; i < A * C; i++)
         {
-            REQUIRE(std::abs(actual[i] - expected[i]) / actual[i] <= 0.02f);
+            REQUIRE_THAT(actual[i],
+                         Catch::Matchers::WithinRel(expected[i], 0.001f)
+                         || Catch::Matchers::WithinAbs(expected[i], 0.000001f));
         }
         // Make LeakSanitizer happy
         delete [] x.data();

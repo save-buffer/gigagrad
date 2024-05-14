@@ -52,15 +52,6 @@ static Shape ComputeBroadcastedShape(const Shape &x, const Shape &y)
 static Shape ComputeReducedShape(const ReduceOp &op)
 {
     Shape shape = op.x.shape();
-    if(op.dims.empty())
-    {
-        if(op.keepdim)
-        {
-            std::fill(shape.begin(), shape.end(), 1);
-            return shape;
-        }
-        return {};
-    }
 
     if(op.dims.size() > shape.size())
         throw std::domain_error("Specified more dims to reduce on than there are dimensions in tensor");
@@ -71,6 +62,9 @@ static Shape ComputeReducedShape(const ReduceOp &op)
     if(!op.keepdim)
     {
         shape.erase(std::remove(shape.begin(), shape.end(), -1), shape.end());
+        // It's a scalar, which is a 1D tensor of size 1
+        if(shape.empty())
+            shape.push_back(1);
     }
     else
     {
@@ -92,6 +86,16 @@ static GraphNodeHandle WrapInReduction(GraphNodeHandle x, ReduceOpType type, Dim
         d = FixDim(d, static_cast<dim_t>(x.shape().size()));
     std::sort(dims.begin(), dims.end());
     return graph->AddNode(ReduceOp{type, x, std::move(dims), keepdim});
+}
+
+GraphNodeHandle GraphNodeHandle::pow(float x) const
+{
+    return gigagrad::pow(*this, x);
+}
+
+GraphNodeHandle GraphNodeHandle::pow(GraphNodeHandle x) const
+{
+    return gigagrad::pow(*this, x);
 }
 
 GraphNodeHandle GraphNodeHandle::sum(bool keepdim) const
@@ -670,8 +674,8 @@ GraphNodeHandle Graph::AddNode(struct Immediate imm)
         GraphNode
         {
             .u = { std::move(imm) },
-            .shape = {},
-            .strides = {},
+            .shape = { 1 },
+            .strides = { 1 },
         });
 }
 
@@ -701,6 +705,11 @@ GraphNodeHandle Graph::AddNode(BinaryOp op)
 
 GraphNodeHandle Graph::AddNode(ReduceOp op)
 {
+    if(op.dims.empty())
+    {
+        op.dims.resize(op.x.shape().size());
+        std::iota(op.dims.begin(), op.dims.end(), 0);
+    }
     Shape shape = ComputeReducedShape(op);
     Shape strides = ComputeStrides(shape);
     return this->AddNode(
