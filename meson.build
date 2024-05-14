@@ -1,6 +1,7 @@
 project('gigagrad', 'cpp', default_options : ['cpp_std=c++20'])
 
 gigagrad_deps = []
+gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend_scalar_c.cpp', 'src/training.cpp']
 
 if host_machine.system() == 'darwin'
   fs = import('fs')
@@ -10,11 +11,6 @@ if host_machine.system() == 'darwin'
     run_command('python3', 'metal-cpp/SingleHeader/MakeSingleHeader.py', 'metal-cpp/Foundation/Foundation.hpp', 'metal-cpp/QuartzCore/QuartzCore.hpp', 'metal-cpp/Metal/Metal.hpp')
   endif
   gigagrad_deps += dependency('appleframeworks', modules : ['foundation', 'quartz', 'metal'])
-endif
-
-gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend_scalar_c.cpp', 'src/training.cpp', 'src/backend_metal.cpp']
-
-if get_option('build_metal').enabled()
   gigagrad_sources += 'src/backend_metal.cpp'
 endif
 
