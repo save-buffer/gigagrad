@@ -161,13 +161,10 @@ namespace gigagrad
 
 TrainingContext CompileTrainingGraph(
     nn::Module &network,
-    GraphNodeHandle model_output,
+    GraphNodeHandle loss,
     std::unique_ptr<codegen::Backend> backend,
     float learning_rate)
 {
-    GraphNodeHandle training_example = network.AddInput(model_output.shape()); 
-    GraphNodeHandle error = model_output - training_example;
-    GraphNodeHandle loss = sum(error * error);
     GraphNodeHandle seed = network.Immediate(learning_rate);
     BackpropContext ctx;
     Differentiate(ctx, loss, seed);
@@ -202,15 +199,15 @@ TrainingContext CompileTrainingGraph(
         size_t weight_idx = ctx.gradients[i].input.node_idx;
         if(weights_to_buffers.contains(weight_idx))
         {
-            size_t gradient_buffer_idx = weights_to_buffers[weight_idx];
+            size_t weight_buffer_idx = weights_to_buffers[weight_idx];
             auto [weight, gradient] = ctx.gradients[i];
-            CodegenNode(ctx.program, (weight - gradient), gradient_buffer_idx);
+            CodegenNode(ctx.program, (weight - gradient), weight_buffer_idx);
         }
     }
     backend->LowerProgram(std::move(ctx.program));
     backend->InitBuffers();
 
     float *loss_buffer = static_cast<float *>(backend->GetBuffer(loss_buffer_id));
-    return { loss_buffer, training_example.data(), std::move(backend) };
+    return { loss_buffer, std::move(backend) };
 }
 }

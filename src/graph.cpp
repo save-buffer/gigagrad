@@ -81,6 +81,9 @@ static GraphNodeHandle WrapInUnary(GraphNodeHandle x, UnaryOpType type)
 
 static GraphNodeHandle WrapInReduction(GraphNodeHandle x, ReduceOpType type, Dims dims, bool keepdim)
 {
+    if(x.shape().empty())
+        return x;
+
     Graph *graph = x.graph;
     for(dim_t &d : dims)
         d = FixDim(d, static_cast<dim_t>(x.shape().size()));
@@ -100,9 +103,7 @@ GraphNodeHandle GraphNodeHandle::pow(GraphNodeHandle x) const
 
 GraphNodeHandle GraphNodeHandle::sum(bool keepdim) const
 {
-    Dims dims(this->shape().size());
-    std::iota(dims.begin(), dims.end(), 0);
-    return this->sum(std::move(dims), keepdim);
+    return this->sum({}, keepdim);
 }
 
 GraphNodeHandle GraphNodeHandle::sum(dim_t dim, bool keepdim) const
@@ -114,12 +115,9 @@ GraphNodeHandle GraphNodeHandle::sum(Dims dims, bool keepdim) const
 {
     return WrapInReduction(*this, ReduceOpType::SUM, std::move(dims), keepdim);
 }
-
 GraphNodeHandle GraphNodeHandle::max(bool keepdim) const
 {
-    Dims dims(this->shape().size());
-    std::iota(dims.begin(), dims.end(), 0);
-    return this->max(std::move(dims), keepdim);
+    return this->max({}, keepdim);
 }
 
 GraphNodeHandle GraphNodeHandle::max(dim_t dim, bool keepdim) const
@@ -674,8 +672,8 @@ GraphNodeHandle Graph::AddNode(struct Immediate imm)
         GraphNode
         {
             .u = { std::move(imm) },
-            .shape = { 1 },
-            .strides = { 1 },
+            .shape = {},
+            .strides = {},
         });
 }
 
@@ -705,6 +703,9 @@ GraphNodeHandle Graph::AddNode(BinaryOp op)
 
 GraphNodeHandle Graph::AddNode(ReduceOp op)
 {
+    if(op.x.shape().empty())
+        return op.x;
+
     if(op.dims.empty())
     {
         op.dims.resize(op.x.shape().size());

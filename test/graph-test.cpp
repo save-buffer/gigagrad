@@ -23,9 +23,11 @@ void TestGradient(
     gg::GraphNodeHandle result,
     float expected)
 {
-    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result, 1.0);
+    auto training_example = network.AddInput(result.shape());
+    auto loss = gg::L2Loss(result, training_example);
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, loss, 1.0);
     float example = 0.0f;
-    ctx.training_example = &example;
+    training_example.data() = &example;
     ctx.Execute();
     CheckApproxEqual(*w.data(), expected);
 }
@@ -308,13 +310,15 @@ TEST_CASE("TestTrainSimple", "[Train]")
     auto x = network.AddInput(4);
     auto w = network.AddWeight(4);
     auto L1 = w - x;
-    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, L1);
+    auto training_example = network.AddInput(L1.shape());
+    auto loss = gg::L2Loss(L1, training_example);
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, loss);
     float x_data[] = { 1.0, 2.0, 3.0, 4.0 };
     float w_data[] = { -0.1, 0.1, -0.001, 0.0001 };
     float training_example_data[] = { 0.0, 0.0, 0.0, 0.0 };
     x.data() = x_data;
     w.data() = w_data;
-    ctx.training_example = training_example_data;
+    training_example.data() = training_example_data;
     float prev_loss = 1000;
     for(int i = 0; i < 50; i++)
     {

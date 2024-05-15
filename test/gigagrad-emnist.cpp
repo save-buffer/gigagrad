@@ -150,7 +150,7 @@ std::vector<float> CastToFloatAndNormalize(const std::vector<uint8_t> &input)
     const T *input_data = reinterpret_cast<const T *>(input.data());
     for(size_t i = 0; i < num_elements; i++)
     {
-        result[i] = static_cast<float>(input_data[i]) / 255.0;
+        result[i] = static_cast<float>(input_data[i]) / 255.0f;
     }
     return result;
 }
@@ -179,8 +179,10 @@ std::vector<float> CastToFloatAndNormalize(DataType dtype, const std::vector<uin
 template <typename T>
 std::vector<float> ToOneHot(const std::vector<uint8_t> &input)
 {
+    static_assert(std::is_integral_v<T>, "Labels must be integral");
     size_t num_elements = input.size() / sizeof(T);
     const T *input_data = reinterpret_cast<const T *>(input.data());
+    T min_val = std::numeric_limits<T>::max();
     T max_val = 0;
     for(size_t i = 0; i < num_elements; i++)
     {
@@ -190,12 +192,14 @@ std::vector<float> ToOneHot(const std::vector<uint8_t> &input)
             exit(1);
         }
         max_val = std::max(max_val, input_data[i]);
+        min_val = std::min(min_val, input_data[i]);
     }
-    std::vector<float> result(max_val * num_elements, 0.0f);
+    T range = (max_val - min_val + 1);
+    std::vector<float> result(range * num_elements, 0.0f);
     for(size_t i = 0; i < num_elements; i++)
     {
-        T cur_val = input_data[i];
-        result[i * max_val + cur_val] = 1.0f;
+        T cur_class = input_data[i] - min_val;
+        result[i * range + cur_class] = 1.0f;
     }
     return result;
 }
@@ -241,7 +245,12 @@ void InitializeWeights(float *weight, size_t size_elts)
     std::default_random_engine gen(0);
     std::uniform_real_distribution<float> dist(-0.1f, 0.1f);
     for(size_t i = 0; i < size_elts; i++)
-        weight[i] = dist(gen);
+    {
+        do
+        {
+            weight[i] = dist(gen);
+        } while(weight[i] == 0.0f);
+    }
 }
 
 int main(int argc, const char **argv)
@@ -268,7 +277,14 @@ int main(int argc, const char **argv)
     auto b2 = network.AddWeight({ 10, 1 });
     auto z2 = (w2 % a2) + b2;
     auto result = z2.softmax(-2);
-    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, result, 0.005f);
+
+    auto training_example = network.AddInput({ BatchSize, 10, 1 });
+    auto loss = CrossEntropyLoss(result, training_example);
+
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(
+        network,
+        loss,
+        0.005f);
 
     w1.data() = new float[HiddenLayerSize * 28 * 28];
     b1.data() = new float[HiddenLayerSize * 1];
@@ -279,17 +295,37 @@ int main(int argc, const char **argv)
     InitializeWeights(w2.data(), 10 * HiddenLayerSize);
     InitializeWeights(b2.data(), 10 * 1);
 
+    float *w1_backup = new float[HiddenLayerSize * 28 * 28];
+    float *w2_backup = new float[HiddenLayerSize * 10];
+
     size_t num_batches = train.shape[0] / BatchSize;
     for(size_t iepoch = 0; iepoch < 100; iepoch++)
     {
+        float epoch_loss = 0.0f;
         for(size_t ibatch = 0; ibatch < num_batches; ibatch++)
         {
             x.data() = &train.inputs[BatchSize * 28 * 28 * ibatch];
-            ctx.training_example = &train.labels[BatchSize * 10 * ibatch];
+            training_example.data() = &train.labels[BatchSize * 10 * ibatch];
+#if 0
+            std::copy(w1.data(), w1.data() + HiddenLayerSize * 28 * 28, w1_backup);
+            std::copy(w2.data(), w2.data() + HiddenLayerSize * 10, w2_backup);
+#endif
             ctx.Execute();
+
+#if 0
+            float sad = 0.0f;
+            for(size_t i = 0; i < HiddenLayerSize * 28 * 28; i++)
+                sad += std::abs(w1.data()[i] - w1_backup[i]);
+            printf("SAD w1: %.6f\n", sad);
+            sad = 0.0f;
+            for(size_t i = 0; i < HiddenLayerSize * 10; i++)
+                sad += std::abs(w2.data()[i] - w2_backup[i]);
+            printf("SAD w2: %.6f\n", sad);
+#endif
+            epoch_loss += *ctx.loss;
             printf("Epoch %zu Batch (%zu / %zu) loss: %.6f\n", iepoch, ibatch, num_batches, *ctx.loss);
         }
-        printf("Epoch %zu loss: %.6f\n", iepoch, *ctx.loss);
+        printf("Epoch %zu loss: %.6f\n", iepoch, epoch_loss / (num_batches * BatchSize));
     }
     return 0;
 }
