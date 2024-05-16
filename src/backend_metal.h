@@ -1,4 +1,7 @@
 #pragma once
+
+#ifdef HAS_METAL
+
 #include "backend.h"
 #include "codegen.h"
 
@@ -44,5 +47,8 @@ struct BackendMetal : public Backend
     GraphEvalFn eval_fn;
 };
 
+
 }
 }
+
+#endif

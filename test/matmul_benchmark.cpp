@@ -37,7 +37,10 @@ int main()
     b.data() = B.data();
 
     auto scalar = matmul.Compile<gg::codegen::BackendScalarC>();
+
+#if HAS_METAL
     auto metal = matmul.Compile<gg::codegen::BackendMetal>();
+#endif
 
     auto start_scalar = std::chrono::high_resolution_clock::now();
     for(size_t i = 0; i < NumIterations; i++)
@@ -46,21 +49,27 @@ int main()
     }
     auto end_scalar = std::chrono::high_resolution_clock::now();
 
+#if HAS_METAL
     auto start_metal = std::chrono::high_resolution_clock::now();
     for(size_t i = 0; i < NumIterations; i++)
     {
         metal.Execute();
     }
     auto end_metal = std::chrono::high_resolution_clock::now();
+#endif
 
     auto duration_scalar = std::chrono::duration_cast<std::chrono::milliseconds>(end_scalar - start_scalar)
         / static_cast<double>(NumIterations);
 
+#if HAS_METAL
     auto duration_metal = std::chrono::duration_cast<std::chrono::milliseconds>(end_metal - start_metal)
         / static_cast<double>(NumIterations);
+#endif
 
     printf("Scalar: %.4fms\n", duration_scalar.count());
+#if HAS_METAL
     printf("Metal: %.4fms\n", duration_metal.count());
+#endif
 
     return 0;
 }
