@@ -103,7 +103,7 @@ GraphNodeHandle GraphNodeHandle::pow(GraphNodeHandle x) const
 
 GraphNodeHandle GraphNodeHandle::sum(bool keepdim) const
 {
-    return this->sum({}, keepdim);
+    return this->sum(Dims{}, keepdim);
 }
 
 GraphNodeHandle GraphNodeHandle::sum(dim_t dim, bool keepdim) const
@@ -117,7 +117,7 @@ GraphNodeHandle GraphNodeHandle::sum(Dims dims, bool keepdim) const
 }
 GraphNodeHandle GraphNodeHandle::max(bool keepdim) const
 {
-    return this->max({}, keepdim);
+    return this->max(Dims{}, keepdim);
 }
 
 GraphNodeHandle GraphNodeHandle::max(dim_t dim, bool keepdim) const

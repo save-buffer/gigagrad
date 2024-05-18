@@ -269,14 +269,12 @@ int main(int argc, const char **argv)
     auto x = network.AddInput({ BatchSize, 28 * 28, 1 });
     auto w1 = network.AddWeight({ HiddenLayerSize, 28 * 28 });
     auto b1 = network.AddWeight({ HiddenLayerSize, 1 });
-
-    auto x_bm = x.batchnorm();
-    auto z1 = (w1 % x_bm) + b1;
+    auto z1 = (w1 % x) + b1;
     auto a2 = z1.relu();
     auto w2 = network.AddWeight({ 10, HiddenLayerSize });
     auto b2 = network.AddWeight({ 10, 1 });
     auto z2 = (w2 % a2) + b2;
-    auto result = z2.softmax(-2);
+    auto result = z2;
 
     auto training_example = network.AddInput({ BatchSize, 10, 1 });
     auto loss = CrossEntropyLoss(result, training_example);
@@ -284,7 +282,7 @@ int main(int argc, const char **argv)
     gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(
         network,
         loss,
-        0.005f);
+        0.05);
 
     w1.data() = new float[HiddenLayerSize * 28 * 28];
     b1.data() = new float[HiddenLayerSize * 1];

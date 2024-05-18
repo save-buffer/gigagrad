@@ -36,7 +36,9 @@ GraphNodeHandle L2Loss(GraphNodeHandle output, GraphNodeHandle training_example)
 
 GraphNodeHandle CrossEntropyLoss(GraphNodeHandle output, GraphNodeHandle training_example)
 {
-    GraphNodeHandle loss = -sum(training_example * log(output));
+    dim_t batch_size = output.shape().size() <= 2 ? 1 : output.shape()[0];
+    GraphNodeHandle softmax = output.softmax(dim_t{-2});
+    GraphNodeHandle loss = -sum(training_example * log(softmax)) / (float)batch_size;
     return loss;
 }
 
