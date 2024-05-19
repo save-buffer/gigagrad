@@ -7,8 +7,6 @@
 
 namespace gg = gigagrad;
 
-constexpr gg::dim_t BatchSize = 128;
-
 // Download dataset from
 // https://www.nist.gov/itl/products-and-services/emnist-dataset
 
@@ -263,7 +261,8 @@ int main(int argc, const char **argv)
 
     Dataset train = LoadDataset(argv[1], "train");
 
-    constexpr size_t HiddenLayerSize = 40;
+    constexpr size_t HiddenLayerSize = 128;
+    constexpr gg::dim_t BatchSize = 64;
 
     gg::nn::Module network;
     auto x = network.AddInput({ BatchSize, 28 * 28, 1 });
