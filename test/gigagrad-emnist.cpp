@@ -283,6 +283,8 @@ int main(int argc, const char **argv)
         loss,
         0.05);
 
+    network.graph.ToDotFile("gg_emnist.dot");
+
     w1.data() = new float[HiddenLayerSize * 28 * 28];
     b1.data() = new float[HiddenLayerSize * 1];
     w2.data() = new float[10 * HiddenLayerSize];

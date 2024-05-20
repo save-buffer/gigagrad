@@ -78,6 +78,8 @@ struct GraphNodeHandle
     CompiledTensor Compile(std::unique_ptr<codegen::Backend> backend) const;
     template <typename TBackend>
     CompiledTensor Compile() const { return Compile(std::make_unique<TBackend>()); }
+
+    void ToDotFile(const char *filename);
 };
 
 enum class UnaryOpType
@@ -296,6 +298,8 @@ struct Graph
     GraphNodeHandle AddNode(struct ViewOp);
 
     GraphNodeHandle AddNode(GraphNode node);
+
+    void ToDotFile(const char *filename);
 
     std::vector<size_t> inputs;
     std::deque<GraphNode> nodes;

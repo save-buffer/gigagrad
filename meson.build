@@ -1,7 +1,13 @@
 project('gigagrad', 'cpp', default_options : ['cpp_std=c++20'])
 
 gigagrad_deps = []
-gigagrad_sources = ['src/graph.cpp', 'src/codegen.cpp', 'src/backend_scalar_c.cpp', 'src/training.cpp']
+gigagrad_sources = [
+    'src/graph.cpp',
+    'src/codegen.cpp',
+    'src/backend_scalar_c.cpp',
+    'src/training.cpp',
+    'src/debug_util.cpp',
+  ]
 
 if host_machine.system() == 'darwin'
   fs = import('fs')
