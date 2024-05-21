@@ -304,6 +304,43 @@ TEST_CASE("TestGradients_MAX", "[Train]")
     CheckApproxEqual(w.data()[2], -3.0f);
 }
 
+TEST_CASE("TestGradients_MATMUL", "[Train]")
+{
+    gg::nn::Module network;
+    auto x = network.AddInput({ 2, 1 });
+    auto w = network.AddWeight({ 2, 2 });
+    auto result = w % x;
+    auto example = network.AddInput(result.shape());
+    auto loss = gg::L2Loss(result, example);
+
+    float x_data[] = { 10, 20 };
+    float w_data[] = { 1, 2, 3, 4 };
+    float example_data[] = { 0, 0 };
+    x.data() = x_data;
+    w.data() = w_data;
+    example.data() = example_data;
+
+    constexpr size_t w_size = sizeof(w_data) / sizeof(w_data[0]);
+
+    float w_gradient[w_size] =
+    {
+        2 * w_data[0] * x_data[0] * x_data[0] + 2 * w_data[1] * x_data[0] * x_data[1],
+        2 * w_data[1] * x_data[1] * x_data[1] + 2 * w_data[0] * x_data[0] * x_data[1],
+        2 * w_data[2] * x_data[0] * x_data[0] + 2 * w_data[3] * x_data[0] * x_data[1],
+        2 * w_data[3] * x_data[1] * x_data[1] + 2 * w_data[2] * x_data[0] * x_data[1],
+    };
+
+    float w_expected[w_size];
+    for(size_t i = 0; i < w_size; i++)
+        w_expected[i] = w_data[i] - w_gradient[i];
+
+    gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(network, loss, 1.0);
+    ctx.Execute();
+
+    for(size_t i = 0; i < w_size; i++)
+        CheckApproxEqual(w_data[i], w_expected[i]);
+}
+
 TEST_CASE("TestTrainSimple", "[Train]")
 {
     gg::nn::Module network;
