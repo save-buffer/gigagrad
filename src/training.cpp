@@ -144,6 +144,8 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ReduceOp &r
 
 void Differentiate(BackpropContext &ctx, GraphNodeHandle, const ViewOp &v, GraphNodeHandle seed)
 {
+    // TODO: This is wrong - urgently needs a fix. Probably will need to sum
+    // gradients that will map to the same memory address.
     auto inverse_view = seed.as_strided(v.x.shape(), v.x.strides(), -v.offset);
     Differentiate(ctx, v.x, inverse_view);
 }

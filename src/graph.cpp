@@ -531,10 +531,19 @@ GraphNodeHandle relu(GraphNodeHandle x)
 
 GraphNodeHandle softmax(GraphNodeHandle x, dim_t axis)
 {
-    GraphNodeHandle m = x.max(axis, true);
-    GraphNodeHandle exp_shifted = exp(x - m);
-    GraphNodeHandle sum_exp_shifted = exp_shifted.sum(axis, true);
-    return exp_shifted / sum_exp_shifted;
+    GraphNodeHandle z = x - x.max(axis, true);
+    GraphNodeHandle numerator = exp(z);
+    GraphNodeHandle denominator = numerator.sum(axis, true);
+    GraphNodeHandle result = numerator / denominator;
+    return result;
+}
+
+GraphNodeHandle log_softmax(GraphNodeHandle x, dim_t axis)
+{
+    GraphNodeHandle z = x - x.max(axis, true);
+    GraphNodeHandle log_sum = log(sum(exp(z), axis, true));
+    GraphNodeHandle log_softmax = z - log_sum;
+    return log_softmax;
 }
 
 GraphNodeHandle sum(GraphNodeHandle x, dim_t axis, bool keepdim)

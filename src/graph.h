@@ -262,6 +262,7 @@ GraphNodeHandle pow(GraphNodeHandle x, GraphNodeHandle y);
 
 GraphNodeHandle relu(GraphNodeHandle x);
 GraphNodeHandle softmax(GraphNodeHandle x, dim_t axis = -1);
+GraphNodeHandle log_softmax(GraphNodeHandle x, dim_t axis = -1);
 
 GraphNodeHandle sum(GraphNodeHandle x, bool keepdim = false);
 GraphNodeHandle sum(GraphNodeHandle x, dim_t axis, bool keepdim = false);
