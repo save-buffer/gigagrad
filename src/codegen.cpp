@@ -58,33 +58,8 @@ size_t CodegenNode(
     size_t load_idx,
     size_t max_seen_size_elts)
 {
-    const Shape &xshape = b.x.shape();
-    const Shape &yshape = b.y.shape();
-    const Shape &broadcasted_shape = node.shape();
-    const Shape &broadcasted_strides = node.strides();
-
-    auto generate_stride_adjustments =
-        [&f, &broadcasted_shape, &broadcasted_strides, load_idx](const Shape &shape)
-        {
-            auto load = load_idx;
-            for(ssize_t i = 0; i < std::ssize(shape); i++)
-            {
-                if(broadcasted_shape[i] != 1 && shape[i] == 1)
-                {
-                    auto divisor = f.IntImmediate(broadcasted_strides[i] * broadcasted_shape[i]);
-                    auto modulus = f.IntImmediate(broadcasted_strides[i]);
-                    auto div = f.Arithmetic(load, IntArithmeticInsn::Op::DIV, divisor);
-                    auto mod = f.Arithmetic(load, IntArithmeticInsn::Op::MOD, modulus);
-                    load = f.Arithmetic(div, IntArithmeticInsn::Op::ADD, mod);
-                }
-            }
-            return load;
-        };
-
-    size_t xload = generate_stride_adjustments(xshape);
-    size_t yload = generate_stride_adjustments(yshape);
-    auto x = CodegenNode(prog, f, b.x, xload, max_seen_size_elts);
-    auto y = CodegenNode(prog, f, b.y, yload, max_seen_size_elts);
+    auto x = CodegenNode(prog, f, b.x, load_idx, max_seen_size_elts);
+    auto y = CodegenNode(prog, f, b.y, load_idx, max_seen_size_elts);
     return f.Binary(b.type, x, y);
 }
 

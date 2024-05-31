@@ -24,9 +24,15 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const Tensor &t, 
     // If we're performing batched training
     if(seed.shape().size() > node.shape().size())
     {
-        Dims dims(seed.shape().size() - node.shape().size());
+        size_t num_example_dims = seed.shape().size() - node.shape().size();
+        auto num_examples = std::accumulate(
+            seed.shape().begin(),
+            seed.shape().begin() + num_example_dims,
+            1,
+            std::multiplies{});
+        Dims dims(num_example_dims);
         std::iota(dims.begin(), dims.end(), 0);
-        seed = seed.sum(std::move(dims));
+        seed = seed.sum(std::move(dims)) / static_cast<float>(num_examples);
     }
     ctx.gradients.push_back({ node, seed });
 }
@@ -144,9 +150,11 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ReduceOp &r
 
 void Differentiate(BackpropContext &ctx, GraphNodeHandle, const ViewOp &v, GraphNodeHandle seed)
 {
-    // TODO: This is wrong - urgently needs a fix. Probably will need to sum
-    // gradients that will map to the same memory address.
-    auto inverse_view = seed.as_strided(v.x.shape(), v.x.strides(), -v.offset);
+    // TODO: Make this support general as_strided. See https://github.com/pytorch/pytorch/blob/ffc7158bf2f97916305217e4203ef846c00161ce/tools/autograd/templates/Functions.cpp#L937-L1488
+    // For now, we only support the case where the node can be broadcasted to the seed.
+    if(v.offset != 0)
+        throw std::runtime_error("Nonzero offset is currently unsupported");
+    auto inverse_view = seed.as_strided(v.x.shape(), v.x.strides(), 0);
     Differentiate(ctx, v.x, inverse_view);
 }
 

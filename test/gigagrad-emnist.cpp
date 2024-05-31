@@ -262,7 +262,7 @@ int main(int argc, const char **argv)
     Dataset train = LoadDataset(argv[1], "train");
 
     constexpr size_t HiddenLayerSize = 128;
-    constexpr gg::dim_t BatchSize = 1;
+    constexpr gg::dim_t BatchSize = 64;
 
     gg::nn::Module network;
     auto x = network.AddInput({ BatchSize, 28 * 28, 1 });

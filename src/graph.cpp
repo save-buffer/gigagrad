@@ -73,6 +73,27 @@ static Shape ComputeReducedShape(const ReduceOp &op)
     return shape;
 }
 
+static GraphNodeHandle ReshapeToBroadcast(GraphNodeHandle x, const Shape &broadcasted_shape)
+{
+    Shape strides = ComputeStrides(broadcasted_shape);
+    dim_t divisor = 1;
+    for(ssize_t i = x.shape().size() - 1; i >= 0; i--)
+    {
+        if(x.shape()[i] == 1 && broadcasted_shape[i] != 1)
+        {
+            divisor *= broadcasted_shape[i];
+            strides[i] = 0;
+        }
+        else
+        {
+            strides[i] /= divisor;
+        }
+    }
+    for(ssize_t i = 0; i < std::ssize(broadcasted_shape) - std::ssize(x.shape()); i++)
+        strides[i] = 0;
+    return x.as_strided(broadcasted_shape, std::move(strides), 0);
+}
+
 static GraphNodeHandle WrapInUnary(GraphNodeHandle x, UnaryOpType type)
 {
     Graph *graph = x.graph;
@@ -701,6 +722,10 @@ GraphNodeHandle Graph::AddNode(BinaryOp op)
 {
     Shape shape = ComputeBroadcastedShape(op.x.shape(), op.y.shape());
     Shape strides = ComputeStrides(shape);
+
+    op.x = ReshapeToBroadcast(op.x, shape);
+    op.y = ReshapeToBroadcast(op.y, shape);
+
     return this->AddNode(
         GraphNode
         {

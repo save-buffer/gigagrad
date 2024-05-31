@@ -463,15 +463,44 @@ TEST_CASE("TestMatmul", "[Codegen]")
         NaiveMatmul(x.data(), y.data(), A, B, C, expected);
         for(gg::dim_t i = 0; i < A * C; i++)
         {
-            REQUIRE_THAT(actual[i],
-                         Catch::Matchers::WithinRel(expected[i], 0.001f)
-                         || Catch::Matchers::WithinAbs(expected[i], 0.000001f));
+            CheckApproxEqual(actual[i], expected[i]);
         }
         // Make LeakSanitizer happy
         delete [] x.data();
         delete [] y.data();
         delete [] expected;
     }
+}
+
+TEST_CASE("TestBroadcast", "[Codegen]")
+{
+    gg::Graph graph;
+    auto x = graph.AddInput({ 1, 3, 1 });
+    auto y = graph.AddInput({ 2, 1, 3 });
+    auto res = x + y;
+    REQUIRE(res.shape() == gg::Shape{2, 3, 3});
+    auto res_compiled = res.Compile<gg::codegen::BackendScalarC>();
+
+    float x_data[] = { 1, 2, 3 };
+    float y_data[] = { -1, -2, -3, -4, -5, -6 };
+    x.data() = x_data;
+    y.data() = y_data;
+    res_compiled.Execute();
+
+    float expected[] =
+        {
+            +0, -1, -2,
+            +1, +0, -1,
+            +2, +1, +0,
+
+            -3, -4, -5,
+            -2, -3, -4,
+            -1, -2, -3,
+        };
+    float expected_size = sizeof(expected) / sizeof(expected[0]);
+    REQUIRE(expected_size == 2 * 3 * 3);
+    for(size_t i = 0; i < expected_size; i++)
+        CheckApproxEqual(res_compiled.data[i], expected[i]);
 }
 
 TEST_CASE("TestLogisticRegressionShape", "[Graph]")
