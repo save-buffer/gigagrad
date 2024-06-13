@@ -77,9 +77,10 @@ static GraphNodeHandle ReshapeToBroadcast(GraphNodeHandle x, const Shape &broadc
 {
     Shape strides = ComputeStrides(broadcasted_shape);
     dim_t divisor = 1;
-    for(ssize_t i = x.shape().size() - 1; i >= 0; i--)
+    auto ibroadcasted_shape = broadcasted_shape.crbegin();
+    for(ssize_t i = std::ssize(x.shape()) - 1; i >= 0; i--, ++ibroadcasted_shape)
     {
-        if(x.shape()[i] == 1 && broadcasted_shape[i] != 1)
+        if(x.shape()[i] == 1 && *ibroadcasted_shape != 1)
         {
             divisor *= broadcasted_shape[i];
             strides[i] = 0;
@@ -702,8 +703,8 @@ GraphNodeHandle Graph::AddNode(struct Immediate imm)
         GraphNode
         {
             .u = { std::move(imm) },
-            .shape = {},
-            .strides = {},
+            .shape = { },
+            .strides = { },
         });
 }
 

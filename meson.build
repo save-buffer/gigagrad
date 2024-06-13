@@ -21,7 +21,7 @@ if host_machine.system() == 'darwin'
   add_global_arguments('-HAS_METAL', language : 'cpp')
 endif
 
-gigagrad = library('gigagrad', gigagrad_sources, dependencies : gigagrad_deps)
+gigagrad = static_library('gigagrad', gigagrad_sources, dependencies : gigagrad_deps)
 
 test_deps = [dependency('catch2-with-main')]
 

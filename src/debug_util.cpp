@@ -6,6 +6,18 @@
 
 using namespace gigagrad;
 
+static void PrintShape(std::FILE *file, const Shape &shape)
+{
+    std::fprintf(file, "{ ");
+    for(ssize_t ishape = 0; ishape < std::ssize(shape); ishape++)
+    {
+        std::fprintf(file, "%zu ", shape[ishape]);
+        if(ishape != std::ssize(shape) - 1)
+            std::fprintf(file, "x ");
+    }
+    std::fprintf(file, "}");
+}
+
 static void NodeToDotDeclaration(std::FILE *file, const Tensor &t)
 {
     std::fprintf(file, "Tensor");
@@ -86,7 +98,9 @@ static void NodeToDotDeclaration(std::FILE *file, const ReduceOp &r)
 
 static void NodeToDotDeclaration(std::FILE *file, const ViewOp &v)
 {
-    std::fprintf(file, "Offset %zd", v.offset);
+    std::fprintf(file, "Offset=%zd, Strides=", v.offset);
+    PrintShape(file, v.strides);
+    std::fprintf(file, ", Shape=");
 }
 
 static void DrawEdges(std::FILE *file, GraphNodeHandle node, std::vector<bool> &visited);
@@ -141,14 +155,8 @@ static void GenerateNodeDeclarations(std::FILE *file, Graph &graph)
         GraphNode &n = graph.nodes[inode];
         std::fprintf(file, "    n%zu [label=\"", inode);
         n.Visit([&](auto &&v) { NodeToDotDeclaration(file, v); });
-        std::fprintf(file, "{ ");
-        for(ssize_t ishape = 0; ishape < std::ssize(n.shape); ishape++)
-        {
-            std::fprintf(file, "%zu ", n.shape[ishape]);
-            if(ishape != std::ssize(n.shape) - 1)
-                std::fprintf(file, "x ");
-        }
-        std::fprintf(file, "}\"];\n");
+        PrintShape(file, n.shape);
+        std::fprintf(file, "\"]\n");
     }
 }
 

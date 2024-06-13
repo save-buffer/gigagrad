@@ -27,20 +27,7 @@ TrainingContext CompileTrainingGraph(nn::Module &network, GraphNodeHandle loss, 
     return CompileTrainingGraph(network, loss, std::make_unique<TBackend>(), learning_rate);
 }
 
-GraphNodeHandle L2Loss(GraphNodeHandle output, GraphNodeHandle training_example)
-{
-    GraphNodeHandle error = output - training_example;
-    GraphNodeHandle loss = sum(error * error);
-    return loss;
-}
-
-GraphNodeHandle CrossEntropyLoss(GraphNodeHandle output, GraphNodeHandle training_example)
-{
-    dim_t batch_size = output.shape().size() <= 2 ? 1 : output.shape()[0];
-    GraphNodeHandle lg_sm = log_softmax(output, dim_t{-2});
-    GraphNodeHandle cross_entropy = lg_sm * training_example;
-    GraphNodeHandle loss = (1.0f / batch_size) * sum(cross_entropy);
-    return loss;
-}
+GraphNodeHandle L2Loss(GraphNodeHandle output, GraphNodeHandle training_example);
+GraphNodeHandle CrossEntropyLoss(GraphNodeHandle output, GraphNodeHandle training_example);
 
 }

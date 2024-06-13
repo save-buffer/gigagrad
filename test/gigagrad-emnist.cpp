@@ -1,5 +1,6 @@
 #include "src/training.h"
 #include "src/backend_scalar_c.h"
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -149,6 +150,7 @@ std::vector<float> CastToFloatAndNormalize(const std::vector<uint8_t> &input)
     for(size_t i = 0; i < num_elements; i++)
     {
         result[i] = static_cast<float>(input_data[i]) / 255.0f;
+        result[i] = (result[i] - 0.5f) / 0.5f;
     }
     return result;
 }
@@ -220,22 +222,42 @@ std::vector<float> ToOneHot(DataType dtype, const std::vector<uint8_t> &input)
     }
 }
 
-struct Dataset
+struct TrainingSet
 {
     std::vector<size_t> shape;
     std::vector<float> inputs;
     std::vector<float> labels;
 };
 
-Dataset LoadDataset(const char *directory, const char *dataset)
+struct TestSet
+{
+    std::vector<size_t> shape;
+    std::vector<float> inputs;
+    std::vector<uint8_t> labels;
+};
+
+std::pair<ParsedDataFile, ParsedDataFile> LoadDataset(const char *directory, const char *dataset)
 {
     std::string image_name = std::string(directory) + "/emnist-mnist-" + dataset + "-images-idx3-ubyte";
     std::string label_name = std::string(directory) + "/emnist-mnist-" + dataset + "-labels-idx1-ubyte";
     ParsedDataFile images = LoadDataFile(image_name.c_str());
     ParsedDataFile labels = LoadDataFile(label_name.c_str());
+    return { std::move(images), std::move(labels) };
+}
+
+TrainingSet LoadTrainingSet(const char *directory)
+{
+    auto [images, labels] = LoadDataset(directory, "train");
     std::vector<float> images_float = CastToFloatAndNormalize(images.dtype, images.data);
     std::vector<float> labels_onehot = ToOneHot(labels.dtype, labels.data);
     return { std::move(images.shape), std::move(images_float), std::move(labels_onehot) };
+}
+
+TestSet LoadTestSet(const char *directory)
+{
+    auto [images, labels] = LoadDataset(directory, "test");
+    std::vector<float> images_float = CastToFloatAndNormalize(images.dtype, images.data);
+    return { std::move(images.shape), std::move(images_float), std::move(labels.data) };
 }
 
 void InitializeWeights(float *weight, size_t size_elts)
@@ -259,8 +281,9 @@ int main(int argc, const char **argv)
         exit(1);
     }
 
-    Dataset train = LoadDataset(argv[1], "train");
+    TrainingSet train = LoadTrainingSet(argv[1]);
 
+    constexpr size_t NumEpochs = 4;
     constexpr size_t HiddenLayerSize = 128;
     constexpr gg::dim_t BatchSize = 64;
 
@@ -281,7 +304,7 @@ int main(int argc, const char **argv)
     gg::TrainingContext ctx = gg::CompileTrainingGraph<gg::codegen::BackendScalarC>(
         network,
         loss,
-        0.05);
+        0.001);
 
     network.graph.ToDotFile("gg_emnist.dot");
 
@@ -294,37 +317,44 @@ int main(int argc, const char **argv)
     InitializeWeights(w2.data(), 10 * HiddenLayerSize);
     InitializeWeights(b2.data(), 10 * 1);
 
-    float *w1_backup = new float[HiddenLayerSize * 28 * 28];
-    float *w2_backup = new float[HiddenLayerSize * 10];
-
     size_t num_batches = train.shape[0] / BatchSize;
-    for(size_t iepoch = 0; iepoch < 100; iepoch++)
+    for(size_t iepoch = 0; iepoch < NumEpochs; iepoch++)
     {
         float epoch_loss = 0.0f;
         for(size_t ibatch = 0; ibatch < num_batches; ibatch++)
         {
             x.data() = &train.inputs[BatchSize * 28 * 28 * ibatch];
             training_example.data() = &train.labels[BatchSize * 10 * ibatch];
-#if 0
-            std::copy(w1.data(), w1.data() + HiddenLayerSize * 28 * 28, w1_backup);
-            std::copy(w2.data(), w2.data() + HiddenLayerSize * 10, w2_backup);
-#endif
+
             ctx.Execute();
 
-#if 0
-            float sad = 0.0f;
-            for(size_t i = 0; i < HiddenLayerSize * 28 * 28; i++)
-                sad += std::abs(w1.data()[i] - w1_backup[i]);
-            printf("SAD w1: %.6f\n", sad);
-            sad = 0.0f;
-            for(size_t i = 0; i < HiddenLayerSize * 10; i++)
-                sad += std::abs(w2.data()[i] - w2_backup[i]);
-            printf("SAD w2: %.6f\n", sad);
-#endif
             epoch_loss += *ctx.loss;
             printf("Epoch %zu Batch (%zu / %zu) loss: %.6f\n", iepoch, ibatch, num_batches, *ctx.loss);
         }
-        printf("Epoch %zu loss: %.6f\n", iepoch, epoch_loss / (num_batches * BatchSize));
+        printf("Epoch [%zu/%zu] loss: %.6f\n", iepoch + 1, NumEpochs, epoch_loss / (num_batches * BatchSize));
     }
+
+    TestSet test = LoadTestSet(argv[1]);
+    auto eval = result.Compile<gg::codegen::BackendScalarC>();
+    size_t num_batches_test = test.shape[0] / BatchSize;
+    size_t num_correct = 0;
+    for(size_t ibatch = 0; ibatch < num_batches_test; ibatch++)
+    {
+        x.data() = &test.inputs[BatchSize * 28 * 28 * ibatch];
+        eval.Execute();
+        for(size_t iexample = 0; iexample < BatchSize; iexample++)
+        {
+            float *prediction_probabilities = eval.data + iexample * 10;
+            uint8_t prediction = std::max_element(prediction_probabilities, prediction_probabilities + 10) - prediction_probabilities;
+            uint8_t actual = test.labels[ibatch * BatchSize + iexample];
+            num_correct += prediction == actual;
+        }
+    }
+    printf(
+        "Evaluation: %zu correct / %zu examples, %.2f%%\n",
+        num_correct,
+        num_batches_test * BatchSize,
+        static_cast<float>(num_correct) / static_cast<float>(num_batches_test * BatchSize) * 100.0f);
+
     return 0;
 }

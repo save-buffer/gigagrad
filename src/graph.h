@@ -207,6 +207,12 @@ struct GraphNode
     }
 
     Kind Kind() { return this->u.k.kind; }
+    size_t NumElements() const
+    {
+        if(this->shape.empty())
+            return 0;
+        return this->shape[0] * this->strides[0];
+    }
 
     U u;
     Shape shape;

@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cerrno>
 #include <cstdlib>
+#include <string>
 
 #include <dlfcn.h>
 
@@ -123,7 +124,7 @@ static void Lower_ScalarC(LowerCtx &ctx, const FunctionBuilder &fn, size_t ifn)
 
 static void GenerateMain(const Program &program, LowerCtx &ctx)
 {
-    std::fprintf(ctx.file, "void gigagrad_main(void **buffers)\n{\n");
+    std::fprintf(ctx.file, "void %s_main(void **buffers)\n{\n", ctx.prefix);
     std::fprintf(ctx.file, "#if __linux__\n");
     std::fprintf(ctx.file, "    feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);\n");
     std::fprintf(ctx.file, "#endif\n");
@@ -140,7 +141,7 @@ static void GenerateMain(const Program &program, LowerCtx &ctx)
 
 using GraphEvalFn = BackendScalarC::GraphEvalFn;
 
-static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path &source_path)
+static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path &source_path, std::string prefix)
 {
     std::filesystem::path obj_path = source_path;
     obj_path.replace_extension(".so");
@@ -157,7 +158,8 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
     if(!handle)
         throw std::runtime_error(dlerror());
     dlerror(); // Clear error conditions
-    auto main_fn = reinterpret_cast<GraphEvalFn>(dlsym(handle, "gigagrad_main"));
+    std::string main_name = prefix + "_main";
+    auto main_fn = reinterpret_cast<GraphEvalFn>(dlsym(handle, main_name.c_str()));
     if(!main_fn)
     {
         char *err = dlerror();
@@ -169,7 +171,7 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
     return { main_fn, handle };
 }
 
-static std::pair<GraphEvalFn, void *> Lower_ScalarC(const char *prefix, const Program &program)
+static std::pair<GraphEvalFn, void *> Lower_ScalarC(std::string prefix, const Program &program)
 {
     auto file_name = std::filesystem::temp_directory_path() / prefix;
     file_name += ".c";
@@ -178,7 +180,7 @@ static std::pair<GraphEvalFn, void *> Lower_ScalarC(const char *prefix, const Pr
     if(!file)
         throw std::system_error(errno, std::generic_category());
 
-    LowerCtx ctx = { prefix, file, 0 };
+    LowerCtx ctx = { prefix.c_str(), file, 0 };
 
     std::fprintf(file, "#define _GNU_SOURCE\n#include <fenv.h>\n");
     std::fprintf(file, "#include <stdint.h>\n#include <math.h>\n\n");
@@ -188,7 +190,7 @@ static std::pair<GraphEvalFn, void *> Lower_ScalarC(const char *prefix, const Pr
 
     GenerateMain(program, ctx);
     std::fclose(file);
-    return CompileAndLoad(file_name);
+    return CompileAndLoad(file_name, prefix);
 }
 
 BackendScalarC::~BackendScalarC()
@@ -206,8 +208,10 @@ BackendScalarC::~BackendScalarC()
 
 void BackendScalarC::LowerProgram(Program &&program)
 {
+    static int counter = 0;
+    std::string prefix = "gg_scalar_" + std::to_string(counter++);
     this->program = std::move(program);
-    auto [eval_fn, handle] = Lower_ScalarC("gg_scalar", this->program);
+    auto [eval_fn, handle] = Lower_ScalarC(std::move(prefix), this->program);
     this->eval_fn = eval_fn;
     this->handle = handle;
 }

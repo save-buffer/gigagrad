@@ -3,6 +3,22 @@
 
 using namespace gigagrad;
 
+GraphNodeHandle gigagrad::L2Loss(GraphNodeHandle output, GraphNodeHandle training_example)
+{
+    GraphNodeHandle error = output - training_example;
+    GraphNodeHandle loss = sum(error * error);
+    return loss;
+}
+
+GraphNodeHandle gigagrad::CrossEntropyLoss(GraphNodeHandle output, GraphNodeHandle training_example)
+{
+    dim_t batch_size = output.shape().size() <= 2 ? 1 : output.shape()[0];
+    GraphNodeHandle lg_sm = log_softmax(output, dim_t{-2});
+    GraphNodeHandle cross_entropy = lg_sm * training_example;
+    GraphNodeHandle loss = (-1.0f / batch_size) * sum(cross_entropy);
+    return loss;
+}
+
 struct Gradient
 {
     GraphNodeHandle input;
@@ -148,13 +164,42 @@ void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ReduceOp &r
     }
 }
 
-void Differentiate(BackpropContext &ctx, GraphNodeHandle, const ViewOp &v, GraphNodeHandle seed)
+void Differentiate(BackpropContext &ctx, GraphNodeHandle node, const ViewOp &v, GraphNodeHandle seed)
 {
+    // Don't bother with anything if we reshaped an Immediate
+    if(v.x.shape().empty())
+        return;
+    // Fast path for if we do a squeeze/unsqueeze-type operation
+    if(v.x->NumElements() == seed->NumElements())
+    {
+        auto inverse_offset = -v.offset;
+        seed = seed.as_strided(v.x.shape(), v.x.strides(), inverse_offset);
+        return Differentiate(ctx, v.x, seed);
+    }
+
+    if(seed->NumElements() > node->NumElements())
+    {
+        dim_t ratio = seed->NumElements() / node->NumElements();
+        Shape shape = { ratio };
+        shape.insert(shape.end(), v.x.shape().begin(), v.x.shape().end());
+        seed = seed.reshape(std::move(shape));
+        seed = seed.sum(dim_t{0});
+    }
+
+    if(std::find(v.strides.begin(), v.strides.end(), 0) != v.strides.end())
+    {
+        Dims sum_dims;
+        for(dim_t idim = 0; idim < std::ssize(v.strides); idim++)
+            if(v.strides[idim] == 0)
+                sum_dims.push_back(idim);
+        
+        seed = seed.sum(std::move(sum_dims));
+    }
+    if(seed->NumElements() != v.x->NumElements())
+        throw std::runtime_error("Differentiating general as_strided is currently unsupported");
+    auto inverse_view = seed.as_strided(v.x.shape(), v.x.strides(), 0);
     // TODO: Make this support general as_strided. See https://github.com/pytorch/pytorch/blob/ffc7158bf2f97916305217e4203ef846c00161ce/tools/autograd/templates/Functions.cpp#L937-L1488
     // For now, we only support the case where the node can be broadcasted to the seed.
-    if(v.offset != 0)
-        throw std::runtime_error("Nonzero offset is currently unsupported");
-    auto inverse_view = seed.as_strided(v.x.shape(), v.x.strides(), 0);
     Differentiate(ctx, v.x, inverse_view);
 }
 
