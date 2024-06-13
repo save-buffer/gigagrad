@@ -18,7 +18,7 @@ if host_machine.system() == 'darwin'
   endif
   gigagrad_deps += dependency('appleframeworks', modules : ['foundation', 'quartz', 'metal'])
   gigagrad_sources += 'src/backend_metal.cpp'
-  add_global_arguments('-HAS_METAL', language : 'cpp')
+  add_global_arguments('-DHAS_METAL', language : 'cpp')
 endif
 
 gigagrad = static_library('gigagrad', gigagrad_sources, dependencies : gigagrad_deps)
