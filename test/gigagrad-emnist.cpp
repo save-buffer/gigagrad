@@ -329,7 +329,7 @@ int main(int argc, const char **argv)
             ctx.Execute();
 
             epoch_loss += *ctx.loss;
-            printf("Epoch %zu Batch (%zu / %zu) loss: %.6f\n", iepoch, ibatch, num_batches, *ctx.loss);
+            printf("Epoch %zu Batch (%zu / %zu) loss: %.6f\n", iepoch + 1, ibatch, num_batches, *ctx.loss);
         }
         printf("Epoch [%zu/%zu] loss: %.6f\n", iepoch + 1, NumEpochs, epoch_loss / (num_batches * BatchSize));
     }
