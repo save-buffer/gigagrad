@@ -5,14 +5,12 @@
 #include <algorithm>
 #include <cstdio>
 
-namespace gigagrad
-{
-namespace codegen
-{
+using namespace gigagrad;
+using namespace gigagrad::codegen;
 
-size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx, size_t max_seen_size_elts);
+static size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx, size_t max_seen_size_elts);
 
-size_t CodegenNode(
+static size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
     GraphNodeHandle node,
@@ -27,7 +25,7 @@ size_t CodegenNode(
     return f.Load(input, load_idx);
 }
 
-size_t CodegenNode(
+static size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
     GraphNodeHandle,
@@ -38,7 +36,7 @@ size_t CodegenNode(
     return f.Immediate(i.value);
 }
 
-size_t CodegenNode(
+static size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
     GraphNodeHandle,
@@ -50,7 +48,7 @@ size_t CodegenNode(
     return f.Unary(u.type, x);
 }
 
-size_t CodegenNode(
+static size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
     GraphNodeHandle node,
@@ -63,7 +61,7 @@ size_t CodegenNode(
     return f.Binary(b.type, x, y);
 }
 
-size_t CodegenNode(
+static size_t CodegenNode(
     Program &prog,
     FunctionBuilder &old_f,
     GraphNodeHandle node,
@@ -138,7 +136,7 @@ size_t CodegenNode(
     return old_f.Load(input, output_load_idx);
 }
 
-size_t CodegenNode(
+static size_t CodegenNode(
     Program &prog,
     FunctionBuilder &f,
     GraphNodeHandle node,
@@ -177,7 +175,7 @@ size_t CodegenNode(
     return x;
 }
 
-size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx, size_t max_seen_size_elts)
+static size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size_t load_idx, size_t max_seen_size_elts)
 {
     if(prog.node_function_cache.contains(node.node_idx))
     {
@@ -193,13 +191,13 @@ size_t CodegenNode(Program &prog, FunctionBuilder &f, GraphNodeHandle node, size
     });
 }
 
-void CodegenNode(Program &prog, GraphNodeHandle node, std::optional<size_t> output_buffer)
+void gigagrad::codegen::CodegenNode(Program &prog, GraphNodeHandle node, std::optional<size_t> output_buffer)
 {
     // ReduceOp generates its own loops
     if(node->Kind() == GraphNode::Kind::ReduceOp)
     {
         FunctionBuilder f(node);
-        CodegenNode(prog, f, node, 0, 0);
+        ::CodegenNode(prog, f, node, 0, 0);
     }
     else
     {
@@ -214,7 +212,7 @@ void CodegenNode(Program &prog, GraphNodeHandle node, std::optional<size_t> outp
             auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
             load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
         }
-        auto to_store = CodegenNode(prog, f, node, load_idx, 0);
+        auto to_store = ::CodegenNode(prog, f, node, load_idx, 0);
         f.Store(load_idx, to_store);
         for(ssize_t i = 0; i < std::ssize(shape); i++)
             f.EndLoop();
@@ -231,13 +229,11 @@ void CodegenNode(Program &prog, GraphNodeHandle node, std::optional<size_t> outp
     }
 }
 
-codegen::Program CodegenNode(GraphNodeHandle node)
+codegen::Program gigagrad::codegen::CodegenNode(GraphNodeHandle node)
 {
     codegen::Program result;
     codegen::CodegenNode(result, node);
     return result;
-}
-
 }
 
 CompiledTensor GraphNodeHandle::Compile(std::unique_ptr<codegen::Backend> backend) const
@@ -253,4 +249,3 @@ CompiledTensor GraphNodeHandle::Compile(std::unique_ptr<codegen::Backend> backen
     return result;
 }
 
-}
