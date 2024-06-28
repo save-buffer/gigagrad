@@ -160,7 +160,7 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        "  -Ofast -fPIC -shared -lm -march=native -mtune=native";
+        "  -g -Ofast -fPIC -shared -lm -march=native -mtune=native";
     std::system(command.c_str());
     // std::printf("Compiling with: %s\n", command.c_str());
 

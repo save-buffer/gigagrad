@@ -6,53 +6,66 @@
 using namespace gigagrad;
 using namespace gigagrad::codegen;
 
-size_t OffsetInsnRef(size_t old_ref, const std::vector<size_t> &insertion_map)
+template <typename Fn> static void VisitVariableReferences(Nop &insn, Fn fn) {}
+template <typename Fn> static void VisitVariableReferences(LoadIntImmediateInsn &insn, Fn fn) {}
+template <typename Fn>
+static void VisitVariableReferences(IntArithmeticInsn &insn, Fn fn)
 {
-    return old_ref + std::upper_bound(insertion_map.begin(), insertion_map.end(), old_ref) - insertion_map.begin();
+    fn(insn.x);
+    fn(insn.y);
+}
+template <typename Fn> static void VisitVariableReferences(BeginLoopInsn &insn, Fn fn) {}
+template <typename Fn> static void VisitVariableReferences(EndLoopInsn &insn, Fn fn) {}
+template <typename Fn>
+static void VisitVariableReferences(LoadInsn &insn, Fn fn)
+{
+    fn(insn.idx);
 }
 
-static void OffsetVariableReferences(Nop &insn, const std::vector<size_t> &insertion_map) {}
-static void OffsetVariableReferences(LoadIntImmediateInsn &insn, const std::vector<size_t> &insertion_map) {}
-static void OffsetVariableReferences(IntArithmeticInsn &insn, const std::vector<size_t> &insertion_map)
+template <typename Fn>
+static void VisitVariableReferences(StoreInsn &insn, Fn fn)
 {
-    insn.x = OffsetInsnRef(insn.x, insertion_map);
-    insn.y = OffsetInsnRef(insn.y, insertion_map);
+    fn(insn.offset);
+    fn(insn.value);
 }
 
-static void OffsetVariableReferences(BeginLoopInsn &insn, const std::vector<size_t> &insertion_map) {}
-static void OffsetVariableReferences(EndLoopInsn &insn, const std::vector<size_t> &insertion_map) {}
-static void OffsetVariableReferences(LoadInsn &insn, const std::vector<size_t> &insertion_map)
+template <typename Fn> static void VisitVariableReferences(LoadImmediateInsn &insn, Fn fn) {}
+template <typename Fn>
+static void VisitVariableReferences(UnaryInsn &insn, Fn fn)
 {
-    insn.idx = OffsetInsnRef(insn.idx, insertion_map);
+    fn(insn.x);
 }
 
-static void OffsetVariableReferences(StoreInsn &insn, const std::vector<size_t> &insertion_map)
+template <typename Fn>
+static void VisitVariableReferences(BinaryInsn &insn, Fn fn)
 {
-    insn.offset = OffsetInsnRef(insn.offset, insertion_map);
-    insn.value = OffsetInsnRef(insn.value, insertion_map);
+    fn(insn.x);
+    fn(insn.y);
 }
 
-static void OffsetVariableReferences(LoadImmediateInsn &insn, const std::vector<size_t> &insertion_map) {}
-static void OffsetVariableReferences(UnaryInsn &insn, const std::vector<size_t> &insertion_map)
+template <typename Fn>
+static void VisitVariableReferences(AccumulateInsn &insn, Fn fn)
 {
-    insn.x = OffsetInsnRef(insn.x, insertion_map);
+    fn(insn.accumulator);
+    fn(insn.x);
 }
 
-static void OffsetVariableReferences(BinaryInsn &insn, const std::vector<size_t> &insertion_map)
+template <typename Fn>
+static void VisitVariableReferences(Instruction &insn, Fn fn)
 {
-    insn.x = OffsetInsnRef(insn.x, insertion_map);
-    insn.y = OffsetInsnRef(insn.y, insertion_map);
+    std::visit([&](auto &&x) { VisitVariableReferences(x, fn); }, insn);
 }
-
-static void OffsetVariableReferences(AccumulateInsn &insn, const std::vector<size_t> &insertion_map)
-{
-    insn.accumulator = OffsetInsnRef(insn.accumulator, insertion_map);
-    insn.x = OffsetInsnRef(insn.x, insertion_map);
-}
-
 static void OffsetVariableReferences(Instruction &insn, const std::vector<size_t> &insertion_map)
 {
-    std::visit([&](auto &&x) { OffsetVariableReferences(x, insertion_map); }, insn);
+    VisitVariableReferences(
+        insn,
+        [&](size_t &old_ref)
+        {
+            old_ref += std::upper_bound(
+                insertion_map.begin(),
+                insertion_map.end(),
+                old_ref) - insertion_map.begin();
+        });
 }
 
 struct UnionFind
@@ -86,46 +99,14 @@ struct UnionFind
     std::vector<size_t> parent;
 };
 
-static void ReplaceReferencesWithParent(Nop &, UnionFind &uf) {}
-static void ReplaceReferencesWithParent(LoadIntImmediateInsn &, UnionFind &uf) {}
-static void ReplaceReferencesWithParent(IntArithmeticInsn &insn, UnionFind &uf)
-{
-    insn.x = uf.Find(insn.x);
-    insn.y = uf.Find(insn.y);
-}
-static void ReplaceReferencesWithParent(BeginLoopInsn &, UnionFind &uf) {}
-static void ReplaceReferencesWithParent(EndLoopInsn &, UnionFind &uf) {}
-static void ReplaceReferencesWithParent(LoadInsn &insn, UnionFind &uf)
-{
-    insn.idx = uf.Find(insn.idx);
-}
-
-static void ReplaceReferencesWithParent(StoreInsn &insn, UnionFind &uf)
-{
-    insn.offset = uf.Find(insn.offset);
-}
-
-static void ReplaceReferencesWithParent(LoadImmediateInsn &insn, UnionFind &uf) {}
-static void ReplaceReferencesWithParent(UnaryInsn &insn, UnionFind &uf)
-{
-    insn.x = uf.Find(insn.x);
-}
-
-static void ReplaceReferencesWithParent(BinaryInsn &insn, UnionFind &uf)
-{
-    insn.x = uf.Find(insn.x);
-    insn.y = uf.Find(insn.y);
-}
-
-static void ReplaceReferencesWithParent(AccumulateInsn &insn, UnionFind &uf)
-{
-    insn.accumulator = uf.Find(insn.accumulator);
-    insn.x = uf.Find(insn.x);
-}
-
 static void ReplaceReferencesWithParent(Instruction &insn, UnionFind &uf)
 {
-    std::visit([&](auto &&x) { ReplaceReferencesWithParent(x, uf); }, insn);
+    VisitVariableReferences(
+        insn,
+        [&](size_t &old_ref)
+        {
+            old_ref = uf.Find(old_ref);
+        });
 }
 
 std::vector<Instruction> gigagrad::codegen::TileLoops(const std::vector<Instruction> &insns, size_t tile_by)

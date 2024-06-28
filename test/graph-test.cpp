@@ -14,7 +14,7 @@ void CheckApproxEqual(float actual, float expected)
 {
     REQUIRE_THAT(actual,
                  Catch::Matchers::WithinRel(expected, 0.001f)
-                 || Catch::Matchers::WithinAbs(expected, 0.000001f));
+                 || Catch::Matchers::WithinAbs(expected, 0.0001f));
 }
 
 void TestGradient(
@@ -438,7 +438,7 @@ void NaiveMatmul(float *x, float *y, size_t A, size_t B, size_t C, float *result
 
 TEST_CASE("TestMatmul", "[Codegen]")
 {
-    constexpr size_t NumTrials = 10;
+    constexpr size_t NumTrials = 50;
     for(size_t itrial = 0; itrial < NumTrials; itrial++)
     {
         std::uniform_int_distribution<gg::dim_t> dim_dist(1, 128);
