@@ -249,6 +249,7 @@ TrainingContext CompileTrainingGraph(
         if(weights_to_buffers.contains(weight_idx))
             CodegenNode(ctx.program, ctx.gradients[i].gradient);
     }
+
     for(size_t i = 0; i < ctx.gradients.size(); i++)
     {
         size_t weight_idx = ctx.gradients[i].input.node_idx;

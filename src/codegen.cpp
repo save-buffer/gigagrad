@@ -110,7 +110,7 @@ static size_t CodegenNode(
     // Generate loops along reduction dimension
     for(auto dim : r.dims)
     {
-        accumulators.push_back(f.Load(static_cast<size_t>(-1), store_idx));
+        accumulators.push_back(f.Immediate(0.0f));
         auto loop = f.Loop(input_shape[dim], 1);
         auto stride = f.IntImmediate(input_strides[dim]);
         auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
@@ -127,6 +127,8 @@ static size_t CodegenNode(
         f.EndLoop();
         iaccum--;
     } while(iaccum >= 0);
+    size_t prev_output = f.Load(static_cast<size_t>(-1), store_idx);
+    f.Accumulate(r.type, accumulators[0], prev_output);
     f.Store(store_idx, accumulators[0]);
     for(ssize_t i = 0; i < std::ssize(input_shape) - std::ssize(r.dims); i++)
         f.EndLoop();
