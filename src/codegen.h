@@ -12,6 +12,12 @@ namespace gigagrad
 namespace codegen
 {
 
+// These will sometimes get emitted by the optimization passes.
+struct Nop
+{
+    void Print(size_t) {}
+};
+
 struct LoadIntImmediateInsn
 {
     int64_t value;
@@ -150,6 +156,7 @@ struct AccumulateInsn
 };
 
 using Instruction = std::variant<
+    Nop,
     LoadIntImmediateInsn,
     IntArithmeticInsn,
     BeginLoopInsn,

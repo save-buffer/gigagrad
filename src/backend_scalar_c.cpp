@@ -20,6 +20,10 @@ struct LowerCtx
     int indentation;
 };
 
+static void Lower_ScalarC(LowerCtx &ctx, const Nop &n, size_t iinsn)
+{
+}
+
 static void Lower_ScalarC(LowerCtx &ctx, const LoadIntImmediateInsn &i, size_t iinsn)
 {
     std::fprintf(ctx.file, "%*sint64_t v%zu = %" PRIi64 ";\n", ctx.indentation, " ", iinsn, i.value);
@@ -204,6 +208,7 @@ static void OptimizeProgram(Program &prog)
     for(size_t ifun = 0; ifun < prog.functions.size(); ifun++)
     {
         prog.functions[ifun].insns = TileLoops(prog.functions[ifun].insns, 8);
+        prog.functions[ifun].insns = EliminateCommonSubexpressions(prog.functions[ifun].insns);
     }
 }
 
