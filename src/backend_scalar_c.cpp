@@ -203,7 +203,7 @@ static void OptimizeProgram(Program &prog)
 {
     for(size_t ifun = 0; ifun < prog.functions.size(); ifun++)
     {
-        prog.functions[ifun].insns = TileLoops(prog.functions[ifun].insns, 4);
+        prog.functions[ifun].insns = TileLoops(prog.functions[ifun].insns, 8);
     }
 }
 
