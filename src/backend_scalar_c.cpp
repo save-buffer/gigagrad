@@ -1,9 +1,11 @@
 #include "backend_scalar_c.h"
+#include "optimizations.h"
 #include <filesystem>
 #include <system_error>
 #include <cstdio>
 #include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 #include <dlfcn.h>
@@ -31,8 +33,8 @@ static void Lower_ScalarC(LowerCtx &ctx, const IntArithmeticInsn &i, size_t iins
 
 static void Lower_ScalarC(LowerCtx &ctx, const BeginLoopInsn &i, size_t iinsn)
 {
-    std::fprintf(ctx.file, "%*sfor(int64_t v%zu = 0; v%zu < %zd; v%zu++)\n%*s{\n",
-                 ctx.indentation, " ", iinsn, iinsn, i.range, iinsn, ctx.indentation, " ");
+    std::fprintf(ctx.file, "%*sfor(int64_t v%zu = 0; v%zu < %zd; v%zu += %zu)\n%*s{\n",
+                 ctx.indentation, " ", iinsn, iinsn, i.range, iinsn, i.step, ctx.indentation, " ");
     ctx.indentation += 4;
 }
 
@@ -44,8 +46,12 @@ static void Lower_ScalarC(LowerCtx &ctx, const EndLoopInsn &i, size_t iinsn)
 
 static void Lower_ScalarC(LowerCtx &ctx, const LoadInsn &i, size_t iinsn)
 {
-    std::fprintf(ctx.file, "%*sfloat v%zu = i%zu[v%zu];\n",
-                 ctx.indentation, " ", iinsn, i.input, i.idx);
+    if(i.input == static_cast<size_t>(-1))
+        std::fprintf(ctx.file, "%*sfloat v%zu = output[v%zu];\n",
+                     ctx.indentation, " ", iinsn, i.idx);
+    else
+        std::fprintf(ctx.file, "%*sfloat v%zu = i%zu[v%zu];\n",
+                     ctx.indentation, " ", iinsn, i.input, i.idx);
 }
 
 static void Lower_ScalarC(LowerCtx &ctx, const StoreInsn &i, size_t iinsn)
@@ -193,6 +199,14 @@ static std::pair<GraphEvalFn, void *> Lower_ScalarC(std::string prefix, const Pr
     return CompileAndLoad(file_name, prefix);
 }
 
+static void OptimizeProgram(Program &prog)
+{
+    for(size_t ifun = 0; ifun < prog.functions.size(); ifun++)
+    {
+        prog.functions[ifun].insns = TileLoops(prog.functions[ifun].insns, 4);
+    }
+}
+
 BackendScalarC::~BackendScalarC()
 {
     dlclose(this->handle);
@@ -211,6 +225,7 @@ void BackendScalarC::LowerProgram(Program &&program)
     static int counter = 0;
     std::string prefix = "gg_scalar_" + std::to_string(counter++);
     this->program = std::move(program);
+    OptimizeProgram(this->program);
     auto [eval_fn, handle] = Lower_ScalarC(std::move(prefix), this->program);
     this->eval_fn = eval_fn;
     this->handle = handle;
@@ -250,6 +265,11 @@ void BackendScalarC::Execute()
         {
             GraphNodeHandle tensor = std::get<GraphNodeHandle>(desc.id);
             this->buffers[ibuff] = (reinterpret_cast<void *>(tensor.data()));
+        }
+        else
+        {
+            size_t size = desc.size_elts;
+            std::memset(this->buffers[ibuff], 0, size * sizeof(float));
         }
     }
     eval_fn(this->buffers.data());

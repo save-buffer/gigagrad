@@ -7,6 +7,7 @@ gigagrad_sources = [
     'src/backend_scalar_c.cpp',
     'src/training.cpp',
     'src/debug_util.cpp',
+    'src/optimizations.cpp',
   ]
 
 if host_machine.system() == 'darwin'

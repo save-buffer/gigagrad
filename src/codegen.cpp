@@ -86,7 +86,7 @@ static size_t CodegenNode(
     {
         if(reduce_dim == r.dims.end() || i != *reduce_dim)
         {
-            auto loop = f.Loop(input_shape[i], input_strides[i]);
+            auto loop = f.Loop(input_shape[i], 1);
             auto input_stride = f.IntImmediate(input_strides[i]);
             auto output_stride = f.IntImmediate(*ioutput_strides);
             auto mul_input_stride = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, input_stride);
@@ -110,8 +110,8 @@ static size_t CodegenNode(
     // Generate loops along reduction dimension
     for(auto dim : r.dims)
     {
-        accumulators.push_back(f.Immediate(0.0f));
-        auto loop = f.Loop(input_shape[dim], input_strides[dim]);
+        accumulators.push_back(f.Load(static_cast<size_t>(-1), store_idx));
+        auto loop = f.Loop(input_shape[dim], 1);
         auto stride = f.IntImmediate(input_strides[dim]);
         auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
         load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);
@@ -207,7 +207,7 @@ void gigagrad::codegen::CodegenNode(Program &prog, GraphNodeHandle node, std::op
         auto load_idx = f.IntImmediate(0);
         for(ssize_t i = 0; i < std::ssize(shape); i++)
         {
-            auto loop = f.Loop(shape[i], strides[i]);
+            auto loop = f.Loop(shape[i], 1);
             auto stride = f.IntImmediate(strides[i]);
             auto mul = f.Arithmetic(loop, IntArithmeticInsn::Op::MUL, stride);
             load_idx = f.Arithmetic(load_idx, IntArithmeticInsn::Op::ADD, mul);

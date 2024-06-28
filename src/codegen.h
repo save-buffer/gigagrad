@@ -46,11 +46,11 @@ struct IntArithmeticInsn
 struct BeginLoopInsn
 {
     dim_t range;
-    dim_t stride;
+    dim_t step;
 
     void Print(size_t iinsn)
     {
-        std::printf("v%zu = LOOP [0..%zd, %zd]\n", iinsn, range, stride);
+        std::printf("v%zu = LOOP [0..%zd, %zd]\n", iinsn, range, step);
     }
 };
 
@@ -64,12 +64,15 @@ struct EndLoopInsn
 
 struct LoadInsn
 {
-    size_t input;
+    size_t input; // -1 means function output
     size_t idx;
 
     void Print(size_t iinsn)
     {
-        std::printf("v%zu = LOAD I%zu[v%zu]\n", iinsn, input, idx);
+        if(input == static_cast<size_t>(-1))
+            std::printf("v%zu = LOAD output[v%zu]\n", iinsn, idx);
+        else
+            std::printf("v%zu = LOAD I%zu[v%zu]\n", iinsn, input, idx);
     }
 };
 
@@ -175,9 +178,9 @@ struct FunctionBuilder
             output_size);
     }
 
-    size_t Loop(dim_t range, dim_t stride)
+    size_t Loop(dim_t range, dim_t step)
     {
-        insns.emplace_back(BeginLoopInsn{range, stride});
+        insns.emplace_back(BeginLoopInsn{range, step});
         return insns.size() - 1;
     }
 
