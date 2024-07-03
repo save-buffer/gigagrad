@@ -76,7 +76,7 @@ struct LoadInsn
     void Print(size_t iinsn)
     {
         if(input == static_cast<size_t>(-1))
-            std::printf("v%zu = LOAD output[v%zu]\n", iinsn, idx);
+            std::printf("v%zu = LOAD Output[v%zu]\n", iinsn, idx);
         else
             std::printf("v%zu = LOAD I%zu[v%zu]\n", iinsn, input, idx);
     }

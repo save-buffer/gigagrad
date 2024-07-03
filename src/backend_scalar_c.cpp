@@ -161,7 +161,9 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
         " -o " +
         obj_path.string() +
         "  -g -Ofast -fPIC -shared -lm -march=native -mtune=native";
-    std::system(command.c_str());
+    int status = std::system(command.c_str());
+    if(status != 0)
+        throw std::runtime_error(std::string("Compiler exited with status ") + std::to_string(status));
     // std::printf("Compiling with: %s\n", command.c_str());
 
     void *handle = dlopen(obj_path.c_str(), RTLD_NOW | RTLD_LOCAL);
@@ -208,6 +210,7 @@ static void OptimizeProgram(Program &prog)
     for(size_t ifun = 0; ifun < prog.functions.size(); ifun++)
     {
         prog.functions[ifun].insns = TileLoops(prog.functions[ifun].insns, 8);
+        prog.functions[ifun].insns = SimplifyAddressExpressions(prog.functions[ifun].insns);
         prog.functions[ifun].insns = EliminateCommonSubexpressions(prog.functions[ifun].insns);
     }
 }

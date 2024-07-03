@@ -283,7 +283,7 @@ int main(int argc, const char **argv)
 
     TrainingSet train = LoadTrainingSet(argv[1]);
 
-    constexpr size_t NumEpochs = 10;
+    constexpr size_t NumEpochs = 4;
     constexpr size_t HiddenLayerSize = 128;
     constexpr gg::dim_t BatchSize = 64;
 
