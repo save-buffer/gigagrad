@@ -420,9 +420,16 @@ static void CanonicalizeAndSimplifyAdd(
     }
     else if(IsConstant(insns[arith.y]))
     {
-        IntArithmeticInsn updated = arith;
-        std::swap(updated.x, updated.y);
-        insns.push_back(updated);
+        if(GetConstant(insns[arith.y]) == 0)
+        {
+            insns.push_back(insns[arith.x]);
+        }
+        else
+        {
+            IntArithmeticInsn updated = arith;
+            std::swap(updated.x, updated.y);
+            insns.push_back(updated);
+        }
     }
     else if(HasOp(insns[arith.y], IntArithmeticInsn::Op::ADD))
     {
@@ -469,7 +476,15 @@ static void CanonicalizeAndSimplifyMul(
     }
     else if(IsConstant(insns[arith.y]))
     {
-        if(HasOp(insns[arith.x], IntArithmeticInsn::Op::ADD))
+        if(GetConstant(insns[arith.y]) == 0)
+        {
+            insns.push_back(LoadIntImmediateInsn{0});
+        }
+        else if(GetConstant(insns[arith.y]) == 1)
+        {
+            insns.push_back(insns[arith.x]);
+        }
+        else if(HasOp(insns[arith.x], IntArithmeticInsn::Op::ADD))
         {
             if(IsConstant(insns[GetOp(insns[arith.x]).x]))
             {
@@ -504,7 +519,15 @@ static void CanonicalizeAndSimplifyMul(
     }
     else if(IsConstant(insns[arith.x]))
     {
-        if(HasOp(insns[arith.y], IntArithmeticInsn::Op::ADD))
+        if(GetConstant(insns[arith.x]) == 0)
+        {
+            insns.push_back(LoadIntImmediateInsn{0});
+        }
+        else if(GetConstant(insns[arith.x]) == 1)
+        {
+            insns.push_back(insns[arith.y]);
+        }
+        else if(HasOp(insns[arith.y], IntArithmeticInsn::Op::ADD))
         {
             if(IsConstant(insns[GetOp(insns[arith.y]).x]))
             {

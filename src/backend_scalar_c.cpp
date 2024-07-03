@@ -160,7 +160,7 @@ static std::pair<GraphEvalFn, void *> CompileAndLoad(const std::filesystem::path
         source_path.string() + 
         " -o " +
         obj_path.string() +
-        "  -g -Ofast -fPIC -shared -lm -march=native -mtune=native";
+        " -g -Ofast -fPIC -shared -lm -march=native -mtune=native";
     int status = std::system(command.c_str());
     if(status != 0)
         throw std::runtime_error(std::string("Compiler exited with status ") + std::to_string(status));
