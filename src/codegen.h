@@ -15,14 +15,14 @@ namespace codegen
 // These will sometimes get emitted by the optimization passes.
 struct Nop
 {
-    void Print(size_t) {}
+    void Print(size_t) const {}
 };
 
 struct LoadIntImmediateInsn
 {
     int64_t value;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         std::printf("v%zu = %" PRIi64 "\n", iinsn, value);
     }
@@ -43,7 +43,7 @@ struct IntArithmeticInsn
     size_t x;
     size_t y;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         std::printf("v%zu = v%zu %c v%zu\n", iinsn, x, (char)op, y);
     }
@@ -54,7 +54,7 @@ struct BeginLoopInsn
     dim_t range;
     dim_t step;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         std::printf("v%zu = LOOP [0..%zd, %zd]\n", iinsn, range, step);
     }
@@ -62,7 +62,7 @@ struct BeginLoopInsn
 
 struct EndLoopInsn
 {
-    void Print(size_t)
+    void Print(size_t) const
     {
         std::printf("END LOOP\n");
     }
@@ -73,7 +73,7 @@ struct LoadInsn
     size_t input; // -1 means function output
     size_t idx;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         if(input == static_cast<size_t>(-1))
             std::printf("v%zu = LOAD Output[v%zu]\n", iinsn, idx);
@@ -87,7 +87,7 @@ struct StoreInsn
     size_t offset;
     size_t value;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         std::printf("Output[v%zu] = v%zu\n", offset, value);
     }
@@ -97,7 +97,7 @@ struct LoadImmediateInsn
 {
     float value;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         std::printf("v%zu = %f\n", iinsn, value);
     }
@@ -108,7 +108,7 @@ struct UnaryInsn
     UnaryOpType type;
     size_t x;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         auto op_str = type == UnaryOpType::NOP ? "NOP"
             : type == UnaryOpType::EXP ? "EXP"
@@ -126,7 +126,7 @@ struct BinaryInsn
     size_t x;
     size_t y;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         auto op_str = type == BinaryOpType::ADD ? "+"
             : type == BinaryOpType::SUB ? "-"
@@ -146,7 +146,7 @@ struct AccumulateInsn
     size_t accumulator;
     size_t x;
 
-    void Print(size_t iinsn)
+    void Print(size_t iinsn) const
     {
         auto op_str = type == ReduceOpType::MAX ? "MAX"
             : type == ReduceOpType::SUM ? "SUM"
@@ -258,7 +258,7 @@ struct FunctionBuilder
         return insns.size() - 1;
     }
 
-    void Print()
+    void Print() const
     {
         for(ssize_t i = 0; i < std::ssize(insns); i++)
         {
@@ -336,7 +336,7 @@ struct Program
         functions[fn_idx].output_buffer = new_output_buffer;
     }
 
-    void Print()
+    void Print() const
     {
         for(size_t i = 0; i < functions.size(); i++)
         {

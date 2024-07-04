@@ -56,11 +56,15 @@ static void Lower_ScalarC(LowerCtx &ctx, const LoadInsn &i, size_t iinsn)
     else
         std::fprintf(ctx.file, "%*sfloat v%zu = i%zu[v%zu];\n",
                      ctx.indentation, " ", iinsn, i.input, i.idx);
+//    std::fprintf(ctx.file, "%*sprintf(\"LOAD i%zu %%zu\\n\", v%zu);\n",
+//                 ctx.indentation, " ", i.input, i.idx);
 }
 
 static void Lower_ScalarC(LowerCtx &ctx, const StoreInsn &i, size_t iinsn)
 {
     std::fprintf(ctx.file, "%*soutput[v%zu] = v%zu;\n", ctx.indentation, " ", i.offset, i.value);
+//    std::fprintf(ctx.file, "%*sprintf(\"STORE %%zu\\n\", v%zu);\n",
+//                 ctx.indentation, " ", i.offset);
 }
 
 static void Lower_ScalarC(LowerCtx &ctx, const LoadImmediateInsn &i, size_t iinsn)
@@ -196,6 +200,7 @@ static std::pair<GraphEvalFn, void *> Lower_ScalarC(std::string prefix, const Pr
 
     std::fprintf(file, "#define _GNU_SOURCE\n#include <fenv.h>\n");
     std::fprintf(file, "#include <stdint.h>\n#include <math.h>\n\n");
+    std::fprintf(file, "#include <stdio.h>\n");
 
     for(size_t ifn = 0; ifn < program.functions.size(); ifn++)
         ::Lower_ScalarC(ctx, program.functions[ifn], ifn);
@@ -211,19 +216,23 @@ static void OptimizeProgram(Program &prog)
     {
         prog.functions[ifun].insns = TileLoops(prog.functions[ifun].insns, 8);
         prog.functions[ifun].insns = SimplifyAddressExpressions(prog.functions[ifun].insns);
-        prog.functions[ifun].insns = EliminateCommonSubexpressions(prog.functions[ifun].insns);
+        //prog.functions[ifun].insns = EliminateCommonSubexpressions(prog.functions[ifun].insns);
     }
 }
 
 BackendScalarC::~BackendScalarC()
 {
-    dlclose(this->handle);
-    for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
+    if(this->handle)
+        dlclose(this->handle);
+    if(!this->buffers.empty())
     {
-        auto &desc = this->program.buffers[ibuff];
-        if(!std::holds_alternative<GraphNodeHandle>(desc.id))
+        for(ssize_t ibuff = 0; ibuff < std::ssize(this->program.buffers); ibuff++)
         {
-            delete [] reinterpret_cast<float *>(this->buffers[ibuff]);
+            auto &desc = this->program.buffers[ibuff];
+            if(!std::holds_alternative<GraphNodeHandle>(desc.id))
+            {
+                delete [] reinterpret_cast<float *>(this->buffers[ibuff]);
+            }
         }
     }
 }
