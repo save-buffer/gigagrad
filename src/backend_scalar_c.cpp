@@ -216,7 +216,7 @@ static void OptimizeProgram(Program &prog)
     {
         prog.functions[ifun].insns = TileLoops(prog.functions[ifun].insns, 8);
         prog.functions[ifun].insns = SimplifyAddressExpressions(prog.functions[ifun].insns);
-        //prog.functions[ifun].insns = EliminateCommonSubexpressions(prog.functions[ifun].insns);
+//        prog.functions[ifun].insns = EliminateCommonSubexpressions(prog.functions[ifun].insns);
     }
 }
 
