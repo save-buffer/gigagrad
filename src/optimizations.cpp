@@ -211,6 +211,8 @@ struct AddressExpression
         std::variant<size_t, dim_t, IntArithmeticInsn::Op> t;
         size_t left = 0;
         size_t right = 0;
+
+        // min and max are inclusive!
         dim_t min = 0;
         dim_t max = 0;
         dim_t multiple = 0;
@@ -238,9 +240,29 @@ struct AddressExpression
         return terms[i].right;
     }
 
+    dim_t GetMin(size_t i) const
+    {
+        return terms[i].min;
+    }
+
+    dim_t GetMax(size_t i) const
+    {
+        return terms[i].max;
+    }
+
+    dim_t GetMultiple(size_t i) const
+    {
+        return terms[i].multiple;
+    }
+
     bool IsOp(size_t i) const
     {
         return std::holds_alternative<IntArithmeticInsn::Op>(terms[i].t);
+    }
+
+    IntArithmeticInsn::Op GetOp(size_t i) const
+    {
+        return std::get<IntArithmeticInsn::Op>(terms[i].t);
     }
 
     bool IsOp(size_t i, char op) const
@@ -251,7 +273,7 @@ struct AddressExpression
                || op == static_cast<char>(IntArithmeticInsn::Op::DIV)
                || op == static_cast<char>(IntArithmeticInsn::Op::MOD));
         return std::holds_alternative<IntArithmeticInsn::Op>(terms[i].t)
-            && op == static_cast<char>(std::get<IntArithmeticInsn::Op>(terms[i].t));
+            && op == static_cast<char>(GetOp(i));
     }
 
     // Op must be +, -, *, /, or %. `left` and `right` must be either 'c' (denoting constant)
@@ -328,6 +350,7 @@ struct AddressExpression
         return true;
     }
 
+    void UpdateBounds(size_t me);
     size_t Canonicalize(size_t me);
     size_t WalkAndSimplify(const std::vector<Instruction> &insns, size_t iinsn);
     size_t Output(std::vector<Instruction> &output, const std::vector<size_t> &input_to_output, size_t me);
@@ -336,8 +359,70 @@ struct AddressExpression
     std::vector<Term> terms;
 };
 
+void AddressExpression::UpdateBounds(size_t me)
+{
+    if(!IsOp(me))
+        return;
+
+    switch(GetOp(me))
+    {
+    case IntArithmeticInsn::Op::ADD:
+        terms[me].min = GetMin(GetLeft(me)) + GetMin(GetRight(me));
+        terms[me].max = GetMax(GetLeft(me)) + GetMax(GetRight(me));
+        terms[me].multiple = std::gcd(GetMultiple(GetLeft(me)), GetMultiple(GetRight(me)));
+        break;
+    case IntArithmeticInsn::Op::SUB:
+        // Tricky: the lowest a - b can be is min(a) - max(b), and vice versa for highest
+        terms[me].min = GetMin(GetLeft(me)) - GetMax(GetRight(me));
+        terms[me].max = GetMax(GetLeft(me)) - GetMin(GetRight(me));
+        terms[me].multiple = std::gcd(GetMultiple(GetLeft(me)), GetMultiple(GetRight(me)));
+        break;
+    case IntArithmeticInsn::Op::MUL:
+        terms[me].min = GetMin(GetLeft(me)) * GetMin(GetRight(me));
+        terms[me].max = GetMax(GetLeft(me)) * GetMax(GetRight(me));
+        terms[me].multiple = GetMultiple(GetLeft(me)) * GetMultiple(GetRight(me));
+        break;
+    case IntArithmeticInsn::Op::DIV:
+        if(GetMax(GetLeft(me)) < GetMin(GetRight(me)))
+        {
+            terms[me].min = 0;
+            terms[me].max = 0;
+            terms[me].multiple = 1;
+        }
+        else
+        {
+            // Same deal as SUB
+            terms[me].min = GetMin(GetLeft(me)) / GetMax(GetRight(me));
+            terms[me].max = GetMax(GetLeft(me)) / GetMin(GetRight(me));
+            terms[me].multiple = GetMultiple(GetLeft(me)) % GetMultiple(GetRight(me)) == 0
+                ? GetMultiple(GetLeft(me)) / GetMultiple(GetRight(me))
+                : 1;
+        }
+        break;
+    case IntArithmeticInsn::Op::MOD:
+        if(GetMultiple(GetLeft(me)) % GetMultiple(GetRight(me)) == 0)
+        {
+            terms[me].min = 0;
+            terms[me].max = 0;
+            terms[me].multiple = 1;
+        }
+        else
+        {
+            terms[me].min = 0;
+            terms[me].max = GetMax(GetRight(me)) - 1;
+            terms[me].multiple = 1;
+        }
+        break;
+    }
+}
+
 size_t AddressExpression::Canonicalize(size_t me)
 {
+    UpdateBounds(me);
+    if(terms[me].min == terms[me].max)
+    {
+        terms[me].t = terms[me].min;
+    }
     if(Matches(me, '+', 'c', 'c'))
     {
         terms[me].t = dim_t{GetConst(GetLeft(me)) + GetConst(GetRight(me))};
@@ -518,17 +603,14 @@ size_t AddressExpression::WalkAndSimplify(const std::vector<Instruction> &insns,
         terms[me].min = value;
         terms[me].max = value;
         terms[me].multiple = value;
-
-        std::get<LoadIntImmediateInsn>(insns[iinsn]).Print(iinsn);
     }
     else if(std::holds_alternative<BeginLoopInsn>(insns[iinsn]))
     {
         const BeginLoopInsn &loop = std::get<BeginLoopInsn>(insns[iinsn]);
         terms[me].t = size_t{iinsn};
         terms[me].min = 0;
-        terms[me].max = loop.range;
+        terms[me].max = ((loop.range - 1) / loop.step) * loop.step;
         terms[me].multiple = loop.step;
-        std::get<BeginLoopInsn>(insns[iinsn]).Print(iinsn);
     }
     else
     {
@@ -537,7 +619,6 @@ size_t AddressExpression::WalkAndSimplify(const std::vector<Instruction> &insns,
         terms[me].t = op;
         terms[me].left = WalkAndSimplify(insns, arith.x);
         terms[me].right = WalkAndSimplify(insns, arith.y);
-        arith.Print(iinsn);
         me = Canonicalize(me);
     }
     return me;
