@@ -215,7 +215,7 @@ struct AddressExpression
         // min and max are inclusive!
         dim_t min = 0;
         dim_t max = 0;
-        dim_t multiple = 0;
+        dim_t factor = 0; // The greatest provable factor of the value. Everything is a multiple of 1.
     };
 
     bool IsConst(size_t i) const
@@ -250,9 +250,9 @@ struct AddressExpression
         return terms[i].max;
     }
 
-    dim_t GetMultiple(size_t i) const
+    dim_t GetFactor(size_t i) const
     {
-        return terms[i].multiple;
+        return terms[i].factor;
     }
 
     bool IsOp(size_t i) const
@@ -289,9 +289,9 @@ struct AddressExpression
 
         size_t l = GetLeft(i);
         size_t r = GetRight(i);
-        if((left == 'c' && !IsConst(l)))// || (left == 't' && IsConst(l)))
+        if((left == 'c' && !IsConst(l)))
             return false;
-        if((right == 'c' && !IsConst(r)))// || (right == 't' && IsConst(r)))
+        if((right == 'c' && !IsConst(r)))
             return false;
         return true;
     }
@@ -314,11 +314,11 @@ struct AddressExpression
         size_t ll = GetLeft(l);
         size_t lr = GetRight(l);
         size_t r = GetRight(i);
-        if((t1 == 'c' && !IsConst(ll)) || (t1 == 't' && IsConst(ll)))
+        if((t1 == 'c' && !IsConst(ll)))
             return false;
-        if((t2 == 'c' && !IsConst(lr)) || (t2 == 't' && IsConst(lr)))
+        if((t2 == 'c' && !IsConst(lr)))
             return false;
-        if((t3 == 'c' && !IsConst(r)) || (t3 == 't' && IsConst(r)))
+        if((t3 == 'c' && !IsConst(r)))
             return false;
         return true;
     }
@@ -341,11 +341,11 @@ struct AddressExpression
         size_t l = GetLeft(i);
         size_t rl = GetLeft(r);
         size_t rr = GetRight(r);
-        if((t1 == 'c' && !IsConst(l)) || (t1 == 't' && IsConst(l)))
+        if((t1 == 'c' && !IsConst(l)))
             return false;
-        if((t2 == 'c' && !IsConst(rl)) || (t2 == 't' && IsConst(rl)))
+        if((t2 == 'c' && !IsConst(rl)))
             return false;
-        if((t3 == 'c' && !IsConst(rr)) || (t3 == 't' && IsConst(rr)))
+        if((t3 == 'c' && !IsConst(rr)))
             return false;
         return true;
     }
@@ -369,48 +369,48 @@ void AddressExpression::UpdateBounds(size_t me)
     case IntArithmeticInsn::Op::ADD:
         terms[me].min = GetMin(GetLeft(me)) + GetMin(GetRight(me));
         terms[me].max = GetMax(GetLeft(me)) + GetMax(GetRight(me));
-        terms[me].multiple = std::gcd(GetMultiple(GetLeft(me)), GetMultiple(GetRight(me)));
+        terms[me].factor = std::gcd(GetFactor(GetLeft(me)), GetFactor(GetRight(me)));
         break;
     case IntArithmeticInsn::Op::SUB:
         // Tricky: the lowest a - b can be is min(a) - max(b), and vice versa for highest
         terms[me].min = GetMin(GetLeft(me)) - GetMax(GetRight(me));
         terms[me].max = GetMax(GetLeft(me)) - GetMin(GetRight(me));
-        terms[me].multiple = std::gcd(GetMultiple(GetLeft(me)), GetMultiple(GetRight(me)));
+        terms[me].factor = std::gcd(GetFactor(GetLeft(me)), GetFactor(GetRight(me)));
         break;
     case IntArithmeticInsn::Op::MUL:
         terms[me].min = GetMin(GetLeft(me)) * GetMin(GetRight(me));
         terms[me].max = GetMax(GetLeft(me)) * GetMax(GetRight(me));
-        terms[me].multiple = GetMultiple(GetLeft(me)) * GetMultiple(GetRight(me));
+        terms[me].factor = GetFactor(GetLeft(me)) * GetFactor(GetRight(me));
         break;
     case IntArithmeticInsn::Op::DIV:
         if(GetMax(GetLeft(me)) < GetMin(GetRight(me)))
         {
             terms[me].min = 0;
             terms[me].max = 0;
-            terms[me].multiple = 1;
+            terms[me].factor = 1;
         }
         else
         {
-            // Same deal as SUB
+            // Same trickiness as SUB, with min/max reversed
             terms[me].min = GetMin(GetLeft(me)) / GetMax(GetRight(me));
             terms[me].max = GetMax(GetLeft(me)) / GetMin(GetRight(me));
-            terms[me].multiple = GetMultiple(GetLeft(me)) % GetMultiple(GetRight(me)) == 0
-                ? GetMultiple(GetLeft(me)) / GetMultiple(GetRight(me))
+            terms[me].factor = GetFactor(GetLeft(me)) % GetFactor(GetRight(me)) == 0
+                ? GetFactor(GetLeft(me)) / GetFactor(GetRight(me))
                 : 1;
         }
         break;
     case IntArithmeticInsn::Op::MOD:
-        if(GetMultiple(GetLeft(me)) % GetMultiple(GetRight(me)) == 0)
+        if(GetFactor(GetLeft(me)) % GetFactor(GetRight(me)) == 0)
         {
             terms[me].min = 0;
             terms[me].max = 0;
-            terms[me].multiple = 1;
+            terms[me].factor = 1;
         }
         else
         {
             terms[me].min = 0;
             terms[me].max = GetMax(GetRight(me)) - 1;
-            terms[me].multiple = 1;
+            terms[me].factor = 1;
         }
         break;
     }
@@ -419,10 +419,6 @@ void AddressExpression::UpdateBounds(size_t me)
 size_t AddressExpression::Canonicalize(size_t me)
 {
     UpdateBounds(me);
-    if(terms[me].min == terms[me].max)
-    {
-        terms[me].t = terms[me].min;
-    }
     if(Matches(me, '+', 'c', 'c'))
     {
         terms[me].t = dim_t{GetConst(GetLeft(me)) + GetConst(GetRight(me))};
@@ -584,10 +580,40 @@ size_t AddressExpression::Canonicalize(size_t me)
         if(GetConst(GetRight(me)) == 1)
             me = GetLeft(me);
     }
+    if(MatchesR(me, '/', '/', 't', 't', 't'))
+    {
+        size_t t1 = GetLeft(me);
+        size_t t2 = GetLeft(GetRight(me));
+        size_t t3 = GetRight(GetRight(me));
+        terms[me].left = t1;
+        terms[me].right = terms.size();
+        terms.push_back({ IntArithmeticInsn::Op::MUL, t2, t3 });
+        terms[me].left = Canonicalize(GetLeft(me));
+        terms[me].right = Canonicalize(GetRight(me));
+    }
+    if(MatchesL(me, '/', '/', 't', 't', 't'))
+    {
+        size_t t1 = GetLeft(GetLeft(me));
+        size_t t2 = GetRight(GetLeft(me));
+        size_t t3 = GetRight(me);
+        terms[me].left = t1;
+        terms[me].right = terms.size();
+        terms.push_back({ IntArithmeticInsn::Op::MUL, t2, t3 });
+        terms[me].left = Canonicalize(GetLeft(me));
+        terms[me].right = Canonicalize(GetRight(me));
+    }
+    // TODO: if a/b and factor(b) % factor(a) == 0, push / factor(b) down
     if(Matches(me, '%', 't', 'c'))
     {
         if(GetConst(GetRight(me)) == 1)
             terms[me].t = dim_t{0};
+    }
+
+    UpdateBounds(me);
+
+    if(GetMin(me) == GetMax(me))
+    {
+        terms[me].t = terms[me].min;
     }
     return me;
 }
@@ -602,7 +628,7 @@ size_t AddressExpression::WalkAndSimplify(const std::vector<Instruction> &insns,
         terms[me].t = value;
         terms[me].min = value;
         terms[me].max = value;
-        terms[me].multiple = value;
+        terms[me].factor = value;
     }
     else if(std::holds_alternative<BeginLoopInsn>(insns[iinsn]))
     {
@@ -610,7 +636,7 @@ size_t AddressExpression::WalkAndSimplify(const std::vector<Instruction> &insns,
         terms[me].t = size_t{iinsn};
         terms[me].min = 0;
         terms[me].max = ((loop.range - 1) / loop.step) * loop.step;
-        terms[me].multiple = loop.step;
+        terms[me].factor = loop.step;
     }
     else
     {
