@@ -24,6 +24,10 @@ struct LowerCtx
     size_t outer_loop_range;
 };
 
+static void Lower_Metal(LowerCtx &ctx, const Nop &n, size_t iinsn)
+{
+}
+
 static void Lower_Metal(LowerCtx &ctx, const LoadIntImmediateInsn &i, size_t iinsn)
 {
     std::fprintf(ctx.file, "%*sint64_t v%zu = %" PRIi64 ";\n", ctx.indentation, " ", iinsn, i.value);
